@@ -78,12 +78,19 @@ function linksOf(html, base) {
   return out;
 }
 async function fetchPage(url, ms = 6500) {
-  const r = await fetchWithTimeout(url, ms);
-  const type = r.headers.get("content-type") || "";
-  if (!r.ok || !/html|xml|text\/plain/i.test(type)) throw new Error(`skip ${r.status} ${type}`);
-  const html = (await r.text()).slice(0, 1_500_000);
-  const title = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || "").replace(/\s+/g, " ").trim()).slice(0, 90);
-  return { url: r.url || url, html, title };
+  // The timeout covers the whole download, not just the first byte, and we stop after 1.5 MB.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": BROWSER_UA, Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", "Accept-Language": "en-IN,en;q=0.9" } });
+    const type = r.headers.get("content-type") || "";
+    if (!r.ok || !/html|xml|text\/plain/i.test(type)) { ctrl.abort(); throw new Error(`skip ${r.status} ${type}`); }
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let html = "";
+    while (html.length < 1_500_000) { const { done, value } = await reader.read(); if (done) break; html += dec.decode(value, { stream: true }); }
+    try { reader.cancel(); } catch {}
+    const title = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || "").replace(/\s+/g, " ").trim()).slice(0, 90);
+    return { url: r.url || url, html, title };
+  } finally { clearTimeout(timer); }
 }
 
 // ---------- what the question is about ----------
