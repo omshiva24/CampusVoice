@@ -3,7 +3,7 @@
 **Ask any college. Out loud.**
 A voice agent that answers questions about **any college**, like fees, admissions, courses, hostel and placements, in **English or Tamil**, on a **website** or a **phone call**. It reads the college's official website live and shows its sources.
 
-**Live app:** [campusvoice-ai.vercel.app](https://campusvoice-ai.vercel.app)
+**Live app:** [campusvoiceai.vercel.app](https://campusvoiceai.vercel.app)
 
 > © 2026 **P Om Shiva**, M.Tech CSE (2nd year), Pondicherry University. **All rights reserved.**
 > This code is shared so it can be seen, not copied. Copying, reusing, deploying or submitting it as your own work without my written permission is not allowed. See [LICENSE](LICENSE).
