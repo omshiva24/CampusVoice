@@ -173,6 +173,13 @@ export default async function handler(req, res) {
         out.ms = r.ms; out.website = r.website; out.sources = r.sources; out.debug = r.debug; out.notes = notesFor(r);
         break;
       }
+      case "tooltest": {
+        // Simulates a Vapi phone tool call against our own webhook.
+        const r = await fetch(toolUrl, { method: "POST", headers: { "Content-Type": "application/json", "x-tool-secret": process.env.TOOL_SECRET },
+          body: JSON.stringify({ message: { type: "tool-calls", toolCallList: [{ id: "test1", type: "function", function: { name: "college_lookup", arguments: { college: q.college || "IIT Madras", question: q.question || "Is there a hostel?", language: "en" } } }] } }) });
+        out.status = r.status; out.body = short(await r.text(), 1800);
+        break;
+      }
       case "agent": {
         const r = await el(`/v1/convai/agents/${process.env.ELEVENLABS_AGENT_ID}`);
         const c = r.data?.conversation_config || {};
