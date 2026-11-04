@@ -259,7 +259,7 @@ export async function researchCollege({ college, question }) {
       debug.tMap = Date.now() - tH; debug.tIdent = tIdent;
       // If the sitemap already points to matching pages, don't wait long for a slow homepage.
       const strong = mapped.some((u) => score(words(u), it) >= 3);
-      const hr = await within(homeP, Math.max(400, (strong ? 4500 : 9000) - (Date.now() - tH)));
+      const hr = await within(homeP, Math.max(400, (strong ? 7000 : 10500) - (Date.now() - tH)));
       let home = hr.ok && !isChallenge(hr.v) ? hr.v : null;
       const site = host(home?.url || info.website);
       const root = site.split(".").slice(-3).join(".");
@@ -277,9 +277,9 @@ export async function researchCollege({ college, question }) {
       debug.sitemap = fromMap.length; debug.top = cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`);
       for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: pdfTitle(l), url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
-      const left = 15000 - (Date.now() - t0);
+      const left = 20000 - (Date.now() - t0);
       const tP = Date.now();
-      const got = left > 2500 ? await Promise.allSettled(pages.map((l) => fetchPage(l.url, Math.min(5500, left)))) : [];
+      const got = left > 2500 ? await Promise.allSettled(pages.map((l) => fetchPage(l.url, Math.min(8500, left)))) : [];
       debug.tPages = Date.now() - tP;
       debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? (isChallenge({ title: g.value.title, paras: [1, 2, 3] }) ? "bot check" : "ok") : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
       got.forEach((g, i) => {
@@ -289,7 +289,7 @@ export async function researchCollege({ college, question }) {
         linksOf(g.value.html, g.value.url).filter((l) => /\.pdf(\?|$)/i.test(l.url) && score(`${l.text} ${pdfName(l.url)}`, it) > 0).slice(0, 2)
           .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: pdfTitle(l), url: l.url }); });
       });
-      if (!home) { const late = await within(homeP, 50); if (late.ok && !isChallenge(late.v)) { home = late.v; addHome(home); debug.lateHome = true; } }
+      if (!home) { const late = await within(homeP, Math.max(50, 20000 - (Date.now() - t0))); if (late.ok && !isChallenge(late.v)) { home = late.v; addHome(home); debug.lateHome = true; } }
     } catch (e) { console.warn("site read failed", info.website, e.message); debug.error = e.message; }
   }
   info.wiki.forEach((t) => passages.push({ t, s: score(t, it), src: { title: "Wikipedia", url: info.wikiUrl } }));
