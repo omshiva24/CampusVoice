@@ -190,13 +190,14 @@ async function homepage(url) {
   const tries = [url.replace(/^http:/, "https:"), url];
   let p = null, err = null;
   for (const u of [...new Set(tries)]) {
-    try { p = await fetchPage(u, 6000); } catch (e) { err = e; continue; }
+    try { p = await fetchPage(u, 12000); } catch (e) { err = e; p = null; continue; }
     // follow a meta-refresh or a simple script redirect once
     const next = /http-equiv=["']?refresh["']?[^>]*url=([^"'>\s]+)/i.exec(p.html)?.[1] || /(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i.exec(p.html)?.[1];
     if (next && htmlToParagraphs(p.html).length < 3) { try { p = await fetchPage(new URL(next, p.url).href, 7000); } catch {} }
     if (p && (htmlToParagraphs(p.html).length || linksOf(p.html, p.url).length)) break;
+    p = null;
   }
-  if (!p) throw err || new Error("site unreachable");
+  if (!p) throw err || new Error("site unreachable or empty");
   const value = { url: p.url, title: p.title, paras: htmlToParagraphs(p.html), links: linksOf(p.html, p.url), bytes: p.html.length, head: p.html.slice(0, 160).replace(/\s+/g, " ") };
   homes.set(url, { at: Date.now(), value });
   if (homes.size > 200) homes.delete(homes.keys().next().value);
