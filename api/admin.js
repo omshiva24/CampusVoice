@@ -98,8 +98,8 @@ export default async function handler(req, res) {
           ? { type: "webhook", name: "college_lookup", description: TOOL_DESCRIPTION, response_timeout_secs: 25,
               api_schema: { url: toolUrl, method: "POST", request_headers: { "x-tool-secret": process.env.TOOL_SECRET }, request_body_schema: { ...TOOL_PARAMS, description: "The college and the question" } } }
           : { type: "client", name: "college_lookup", description: TOOL_DESCRIPTION, expects_response: true, response_timeout_secs: 25, parameters: TOOL_PARAMS };
-        const tool = await el("/v1/convai/tools", { method: "POST", body: { tool_config: toolConfig } });
-        out.tool = { status: tool.status, data: short(tool.data, 600) };
+        const tool = q.toolid ? { ok: true, status: 200, data: { id: q.toolid } } : await el("/v1/convai/tools", { method: "POST", body: { tool_config: toolConfig } });
+        out.tool = { status: tool.status, data: short(tool.data, 300) };
         if (!tool.ok) break;
         const agent = {
           name: "CampusVoice AI",
@@ -116,10 +116,10 @@ export default async function handler(req, res) {
                 },
               },
             },
-            tts: { model_id: q.tts || "eleven_flash_v2_5", voice_id: voice },
+            tts: { model_id: q.tts || "eleven_flash_v2", voice_id: voice },
             conversation: { max_duration_seconds: 150 },
             language_presets: {
-              ta: { overrides: { agent: { first_message: "வணக்கம்! நான் CampusVoice. {{college_name}} பற்றி கட்டணம், சேர்க்கை, படிப்புகள், விடுதி என எதை வேண்டுமானாலும் கேளுங்கள்.", language: "ta" } } },
+              ta: { overrides: { ...(q.tamodel ? { tts: { model_id: q.tamodel } } : {}), agent: { first_message: "வணக்கம்! நான் CampusVoice. {{college_name}} பற்றி கட்டணம், சேர்க்கை, படிப்புகள், விடுதி என எதை வேண்டுமானாலும் கேளுங்கள்.", language: "ta" } } },
             },
           },
           platform_settings: {
