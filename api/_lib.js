@@ -235,6 +235,7 @@ export async function researchCollege({ college, question }) {
   const t0 = Date.now();
   const it = intent(question);
   const info = await identify(college).catch(() => ({ name: college, title: college, wiki: [], website: null }));
+  const tIdent = Date.now() - t0;
   const passages = [];
   const sources = [];
   const docs = [];
@@ -244,7 +245,9 @@ export async function researchCollege({ college, question }) {
   if (info.website) {
     try {
       const startOrigin = new URL(info.website.replace(/^http:/, "https:")).origin;
-      const [homeR, mapR] = await Promise.allSettled([homepage(info.website), sitemapUrls(startOrigin)]);
+      const tH = Date.now();
+      const [homeR, mapR] = await Promise.allSettled([homepage(info.website).finally(() => { debug.tHome = Date.now() - tH; }), sitemapUrls(startOrigin).finally(() => { debug.tMap = Date.now() - tH; })]);
+      debug.tIdent = tIdent;
       const home = homeR.status === "fulfilled" && !isChallenge(homeR.value) ? homeR.value : null;
       const site = host(home?.url || info.website);
       const root = site.split(".").slice(-3).join(".");
@@ -264,7 +267,9 @@ export async function researchCollege({ college, question }) {
       for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: pdfTitle(l), url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
       const left = 15000 - (Date.now() - t0);
+      const tP = Date.now();
       const got = left > 2500 ? await Promise.allSettled(pages.map((l) => fetchPage(l.url, Math.min(5500, left)))) : [];
+      debug.tPages = Date.now() - tP;
       debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? (isChallenge({ title: g.value.title, paras: [1, 2, 3] }) ? "bot check" : "ok") : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
       got.forEach((g, i) => {
         if (g.status !== "fulfilled" || /validation|captcha|attention required|access denied/i.test(g.value.title)) return;
