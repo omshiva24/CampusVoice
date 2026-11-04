@@ -407,3 +407,6 @@ callBtn.addEventListener("click", async () => {
     console.warn(e); callState.textContent = "The phone agent couldn't connect. Please try again later."; callBtn.disabled = false;
   }
 });
+
+// Used only to film the app for the TechVibe24 video (open with ?demo).
+if (new URLSearchParams(location.search).has("demo")) window.CV = { bubble, searching, showSources, setMode, addSys, state, setLive, startTimer };
