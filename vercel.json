@@ -1,22 +1,48 @@
 {
+  "regions": [
+    "bom1"
+  ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "Permissions-Policy", "value": "microphone=(self), camera=(), geolocation=()" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "microphone=(self), camera=(), geolocation=()"
+        }
       ]
     },
     {
       "source": "/fonts/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ],
   "functions": {
-    "api/ask.js": { "maxDuration": 30 },
-    "api/tool.js": { "maxDuration": 30 },
-    "api/admin.js": { "maxDuration": 60 }
+    "api/ask.js": {
+      "maxDuration": 30
+    },
+    "api/tool.js": {
+      "maxDuration": 30
+    },
+    "api/admin.js": {
+      "maxDuration": 60
+    }
   }
 }
