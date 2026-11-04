@@ -78,8 +78,9 @@ renderQuick();
 
 fetch("api/config").then((r) => r.json()).then((cfg) => {
   state.cfg = cfg;
-  $("#mode-badge").textContent = cfg.webVoice ? "Premium voice · ElevenLabs" : "Backup voice · free";
-  $("#mode-badge").className = "mode " + (cfg.webVoice ? "premium" : "backup");
+  const vapiWeb = !!(cfg.vapiPublicKey && cfg.vapiAssistantId);
+  $("#mode-badge").textContent = cfg.webVoice ? "Premium voice · ElevenLabs" : vapiWeb ? "Premium voice · Vapi" : "Backup voice · free";
+  $("#mode-badge").className = "mode " + (cfg.webVoice || vapiWeb ? "premium" : "backup");
   if (cfg.phoneNumber) {
     const n = $("#phone-number"); n.hidden = false;
     n.innerHTML = `<a href="tel:${cfg.phoneNumber.replace(/[^+\d]/g, "")}">${cfg.phoneNumber}</a>`;
@@ -170,7 +171,9 @@ const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 function measure() {
   let target = 0;
   try {
-    if (state.engine === "eleven" && state.conv) {
+    if (state.engine === "vapi") {
+      target = Math.min(1, (state.vapiLevel || 0) * 1.6);
+    } else if (state.engine === "eleven" && state.conv) {
       target = state.mode === "speaking" ? state.conv.getOutputVolume() : state.mode === "listening" ? state.conv.getInputVolume() : 0;
     } else if (state.analyser && state.mode === "listening") {
       const d = new Uint8Array(state.analyser.fftSize); state.analyser.getByteTimeDomainData(d);
@@ -243,19 +246,23 @@ async function start() {
     const s = await fetch(`api/session?lang=${state.lang}`).then((r) => r.json()).catch(() => ({ mode: "backup" }));
     if (s.mode === "eleven") {
       try { await startEleven(s.signedUrl); return; }
-      catch (e) {
-        console.warn("Premium voice failed:", e);
-        addSys("Premium voice isn't available right now (the free minutes may be used up). Switched to the free backup voice.");
-      }
-    } else if (s.reason === "rate_limited") {
-      addSys("You've used the premium voice a lot this hour, so I switched to the free backup voice.");
+      catch (e) { console.warn("ElevenLabs voice failed:", e); }
     }
+    if (s.reason === "rate_limited") {
+      addSys("You've used the premium voice a lot this hour, so I switched to the free backup voice.");
+    } else if (state.cfg.vapiPublicKey && state.cfg.vapiAssistantId) {
+      try { await startVapiWeb(); return; }
+      catch (e) { console.warn("Vapi voice failed:", e); }
+    }
+    if (s.mode === "eleven") addSys("Premium voice isn't available right now (the free minutes may be used up). Switched to the free backup voice.");
     await startBackup();
   } finally { mic.disabled = false; }
 }
 function stop() {
   state.active = false;
   try { state.conv?.endSession(); } catch {}
+  try { state.vapiWeb?.stop(); } catch {}
+  state.vapiWeb = null;
   try { state.rec?.abort(); } catch {}
   try { speechSynthesis.cancel(); } catch {}
   state.stream?.getTracks().forEach((t) => t.stop());
@@ -270,13 +277,15 @@ async function startEleven(signedUrl) {
   await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop()));
   state.engine = "eleven";
   let lastUser = "";
+  let connected = false, earlyClose = null;
+  const early = new Promise((_, fail) => { earlyClose = fail; });
   const conv = await Conversation.startSession({
     signedUrl,
     dynamicVariables: { college_name: college() },
     overrides: state.lang === "ta" ? { agent: { language: "ta" } } : undefined,
     clientTools: { college_lookup: collegeLookup },
-    onConnect: () => { setLive(true); startTimer(); setMode("listening"); },
-    onDisconnect: () => { if (state.engine === "eleven") stop(); },
+    onConnect: () => { connected = true; setLive(true); startTimer(); setMode("listening"); },
+    onDisconnect: (d) => { if (!connected) { earlyClose?.(new Error(d?.message || d?.reason || "closed before connecting")); return; } if (state.engine === "eleven") stop(); },
     onModeChange: (m) => setMode((m?.mode || m) === "speaking" ? "speaking" : "listening"),
     onMessage: (m) => {
       const who = m?.source || m?.role; const text = (m?.message || "").trim();
@@ -288,6 +297,52 @@ async function startEleven(signedUrl) {
   });
   state.conv = conv;
   conv.typedEcho = (t) => { lastUser = t; };
+  // Wait until the agent really answers the call; otherwise let the caller fall back.
+  await Promise.race([early, new Promise((ok) => { const iv = setInterval(() => { if (connected) { clearInterval(iv); ok(); } }, 100); setTimeout(() => { clearInterval(iv); ok(); }, 8000); })]);
+  if (!connected) { try { conv.endSession(); } catch {} state.conv = null; state.engine = null; throw new Error("no connection"); }
+}
+
+// ---------- premium voice through Vapi (same agent brain, same lookup tool) ----------
+let VapiClass = null;
+async function loadVapi() {
+  if (!VapiClass) { const mod = await import(VAPI_SDK); VapiClass = mod.default?.default || mod.default || mod.Vapi; }
+  return VapiClass;
+}
+async function startVapiWeb() {
+  const Vapi = await loadVapi();
+  await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop()));
+  const v = new Vapi(state.cfg.vapiPublicKey);
+  state.vapiWeb = v; state.engine = "vapi"; state.vapiLevel = 0;
+  $("#mode-badge").textContent = "Premium voice · Vapi"; $("#mode-badge").className = "mode premium";
+  let connected = false;
+  const ready = new Promise((ok, fail) => {
+    v.on("call-start", () => { connected = true; setLive(true); startTimer(); setMode("listening"); ok(); });
+    v.on("error", (e) => { console.warn("vapi", e); if (!connected) fail(new Error("vapi error")); });
+    setTimeout(() => { if (!connected) fail(new Error("vapi timeout")); }, 15000);
+  });
+  v.on("call-end", () => { if (state.engine === "vapi") stop(); });
+  v.on("speech-start", () => setMode("speaking"));
+  v.on("speech-end", () => setMode("listening"));
+  v.on("volume-level", (l) => { state.vapiLevel = l; });
+  const shown = new Set();
+  v.on("message", async (m) => {
+    if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) bubble(m.role === "user" ? "user" : "ai", m.transcript);
+    if (m?.type === "tool-calls") {
+      for (const c of m.toolCallList || []) {
+        if (shown.has(c.id)) continue; shown.add(c.id);
+        let a = c.function?.arguments || {}; if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }
+        setMode("thinking");
+        const el = searching(a.college || college());
+        ask(a.question || "", a.college || college(), a.language || state.lang, "notes").then((r) => showSources(el, r))
+          .catch(() => { el.classList.remove("search"); el.querySelector(".msg").textContent = "Read the official website"; });
+      }
+    }
+  });
+  const first = state.lang === "ta"
+    ? `வணக்கம்! நான் CampusVoice. ${college()} பற்றி கட்டணம், சேர்க்கை, படிப்புகள், விடுதி என எதை வேண்டுமானாலும் கேளுங்கள்.`
+    : `Hi! I'm CampusVoice. Ask me anything about ${college()}: fees, admissions, courses or hostel. You can speak in English or Tamil.`;
+  await v.start(state.cfg.vapiAssistantId, { firstMessage: first, variableValues: { college_name: college() } });
+  await ready;
 }
 
 // ---------- backup voice: the browser's own speech tools (free) ----------
@@ -400,8 +455,7 @@ callBtn.addEventListener("click", async () => {
   callBtn.disabled = true; callState.textContent = "Dialling…";
   try {
     if (!vapi) {
-      const mod = await import(VAPI_SDK);
-      const Vapi = mod.default?.default || mod.default || mod.Vapi;
+      const Vapi = await loadVapi();
       vapi = new Vapi(state.cfg.vapiPublicKey);
       vapi.on("call-start", () => {
         inCall = true; callBtn.disabled = false; callBtn.textContent = "End call"; callBtn.classList.add("end"); $("#call-ring").classList.add("on");

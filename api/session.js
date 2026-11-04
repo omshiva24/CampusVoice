@@ -9,6 +9,8 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   const key = process.env.ELEVENLABS_API_KEY, agent = process.env.ELEVENLABS_AGENT_ID;
   if (!key || !agent) return res.status(200).json({ mode: "backup", reason: "not_configured" });
+  // ELEVENLABS_DISABLED=1 when the ElevenLabs workspace can't start conversations (for example free-tier limits).
+  if (process.env.ELEVENLABS_DISABLED) return res.status(200).json({ mode: "backup", reason: "eleven_disabled" });
   if (limited(`session:${ipOf(req)}`, 8, 60 * 60_000)) {
     return res.status(200).json({ mode: "backup", reason: "rate_limited" });
   }
