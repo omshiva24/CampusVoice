@@ -8,6 +8,7 @@
 // The voice agents (ElevenLabs on the web, Vapi on the phone) answer only from these passages.
 
 const UA = "Mozilla/5.0 (compatible; CampusVoiceBot/1.0; +https://github.com/omshiva24/CampusVoice)";
+const BROWSER_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 CampusVoiceAI/1.0";
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 export const MODELS = (process.env.GEMINI_MODELS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.7-flash,gemini-3.8-flash")
   .split(",").map((m) => m.trim()).filter(Boolean);
@@ -35,8 +36,9 @@ const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } 
 async function fetchWithTimeout(url, ms, accept = "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5") {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
+  const ua = /wikipedia\.org|wikidata\.org/.test(url) ? UA : BROWSER_UA;
   try {
-    return await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": UA, Accept: accept, "Accept-Language": "en-IN,en;q=0.9" } });
+    return await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": ua, Accept: accept, "Accept-Language": "en-IN,en;q=0.9" } });
   } finally { clearTimeout(timer); }
 }
 async function getJson(url, ms = 5000) {
@@ -223,6 +225,9 @@ async function sitemapUrls(origin) {
   return value;
 }
 
+const isChallenge = (p) => /validation|captcha|attention required|access denied|just a moment|are you a robot/i.test(p.title || "") && (p.paras?.length || 0) < 12;
+const pdfName = (u) => { try { return decodeURIComponent(new URL(u).pathname.split("/").pop()).replace(/\.pdf$/i, "").replace(/[_\-]+/g, " ").slice(0, 60); } catch { return "PDF document"; } };
+
 // ---------- the research step used by every channel ----------
 export async function researchCollege({ college, question }) {
   college = clean(college, 120); question = clean(question, 300);
@@ -239,33 +244,34 @@ export async function researchCollege({ college, question }) {
 
   if (info.website) {
     try {
-      const mapP = sitemapUrls(new URL(info.website.replace(/^http:/, "https:")).origin).catch(() => []);
-      const home = await homepage(info.website);
-      const site = host(home.url) || host(info.website);
+      const startOrigin = new URL(info.website.replace(/^http:/, "https:")).origin;
+      const [homeR, mapR] = await Promise.allSettled([homepage(info.website), sitemapUrls(startOrigin)]);
+      const home = homeR.status === "fulfilled" && !isChallenge(homeR.value) ? homeR.value : null;
+      const site = host(home?.url || info.website);
       const root = site.split(".").slice(-3).join(".");
-      home.paras.forEach((t) => passages.push({ t, s: score(t, it) * 1.1, src: { title: site, url: home.url } }));
-      const seen = new Set([home.url]);
-      const origin = new URL(home.url).origin;
-      let mapped = await mapP;
-      if (!mapped.length && origin !== new URL(info.website.replace(/^http:/, "https:")).origin) mapped = await sitemapUrls(origin);
+      if (home) home.paras.forEach((t) => passages.push({ t, s: score(t, it) * 1.1, src: { title: site, url: home.url } }));
+      const seen = new Set(home ? [home.url] : []);
+      let mapped = mapR.status === "fulfilled" ? mapR.value : [];
+      if (!mapped.length && home && new URL(home.url).origin !== startOrigin) mapped = await sitemapUrls(new URL(home.url).origin);
       const fromMap = mapped.map((u) => ({ url: u, text: "" }));
       const words = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/[\/_\-.]+/g, " "); } catch { return u; } };
-      const cands = [...home.links, ...fromMap]
+      const cands = [...(home?.links || []), ...fromMap]
         .filter((l) => host(l.url).endsWith(root))
         .map((l) => ({ ...l, s: score(`${l.text} ${words(l.url)}`, it) * (l.text ? 1.2 : 1) }))
         .filter((l) => l.s > 0 && !seen.has(l.url) && (seen.add(l.url), true))
         .sort((a, b) => b.s - a.s);
-      debug.home = { url: home.url, bytes: home.bytes, head: home.head, title: home.title, paras: home.paras.length, links: home.links.length, sitemap: fromMap.length, top: cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`) };
-      for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: l.text || "PDF document", url: l.url });
+      debug.home = home ? { url: home.url, title: home.title, paras: home.paras.length, links: home.links.length } : { failed: homeR.reason?.message || "bot check" };
+      debug.sitemap = fromMap.length; debug.top = cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`);
+      for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: l.text || pdfName(l.url), url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
       const got = await Promise.allSettled(pages.map((l) => fetchPage(l.url, 6000)));
-      debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? "ok" : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
+      debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? (isChallenge({ title: g.value.title, paras: [1, 2, 3] }) ? "bot check" : "ok") : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
       got.forEach((g, i) => {
-        if (g.status !== "fulfilled") return;
+        if (g.status !== "fulfilled" || /validation|captcha|attention required|access denied/i.test(g.value.title)) return;
         const label = `${site} · ${(pages[i].text || g.value.title || "page").slice(0, 40)}`;
         htmlToParagraphs(g.value.html).forEach((t) => passages.push({ t, s: score(t, it) * 1.3, src: { title: label, url: g.value.url } }));
-        linksOf(g.value.html, g.value.url).filter((l) => /\.pdf(\?|$)/i.test(l.url) && score(l.text, it) > 0).slice(0, 2)
-          .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: l.text || "PDF document", url: l.url }); });
+        linksOf(g.value.html, g.value.url).filter((l) => /\.pdf(\?|$)/i.test(l.url) && score(`${l.text} ${pdfName(l.url)}`, it) > 0).slice(0, 2)
+          .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: l.text || pdfName(l.url), url: l.url }); });
       });
     } catch (e) { console.warn("site read failed", info.website, e.message); debug.error = e.message; }
   }
