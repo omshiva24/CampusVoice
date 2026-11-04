@@ -226,6 +226,7 @@ async function sitemapUrls(origin) {
 }
 
 const isChallenge = (p) => /validation|captcha|attention required|access denied|just a moment|are you a robot/i.test(p.title || "") && (p.paras?.length || 0) < 12;
+const pdfTitle = (l) => (l.text && !/^https?:|^www\./i.test(l.text) ? l.text : pdfName(l.url));
 const pdfName = (u) => { try { return decodeURIComponent(new URL(u).pathname.split("/").pop()).replace(/\.pdf$/i, "").replace(/[_\-]+/g, " ").slice(0, 60); } catch { return "PDF document"; } };
 
 // ---------- the research step used by every channel ----------
@@ -262,7 +263,7 @@ export async function researchCollege({ college, question }) {
         .sort((a, b) => b.s - a.s);
       debug.home = home ? { url: home.url, title: home.title, paras: home.paras.length, links: home.links.length } : { failed: homeR.reason?.message || "bot check" };
       debug.sitemap = fromMap.length; debug.top = cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`);
-      for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: l.text || pdfName(l.url), url: l.url });
+      for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: pdfTitle(l), url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
       const got = await Promise.allSettled(pages.map((l) => fetchPage(l.url, 6000)));
       debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? (isChallenge({ title: g.value.title, paras: [1, 2, 3] }) ? "bot check" : "ok") : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
@@ -271,7 +272,7 @@ export async function researchCollege({ college, question }) {
         const label = `${site} · ${(pages[i].text || g.value.title || "page").slice(0, 40)}`;
         htmlToParagraphs(g.value.html).forEach((t) => passages.push({ t, s: score(t, it) * 1.3, src: { title: label, url: g.value.url } }));
         linksOf(g.value.html, g.value.url).filter((l) => /\.pdf(\?|$)/i.test(l.url) && score(`${l.text} ${pdfName(l.url)}`, it) > 0).slice(0, 2)
-          .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: l.text || pdfName(l.url), url: l.url }); });
+          .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: pdfTitle(l), url: l.url }); });
       });
     } catch (e) { console.warn("site read failed", info.website, e.message); debug.error = e.message; }
   }
