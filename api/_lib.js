@@ -117,12 +117,23 @@ function termRe(w) {
   if (!reCache.has(w)) reCache.set(w, /^[a-z0-9.]+$/i.test(w) ? new RegExp(`(^|[^a-z0-9])${esc(w)}(?=$|[^a-z0-9])`, "i") : new RegExp(esc(w), "i"));
   return reCache.get(w);
 }
+// Prefer this year's and next year's information over old notices.
+const NOW_Y = new Date().getFullYear();
+function yearFactor(t) {
+  const ys = (t.match(/\b20[12]\d\b/g) || []).map(Number);
+  if (!ys.length) return 1;
+  const max = Math.max(...ys);
+  if (max >= NOW_Y) return 1.7;
+  if (max === NOW_Y - 1) return 1.25;
+  return max <= NOW_Y - 3 ? 0.35 : 0.7;
+}
 function score(text, it) {
   const t = text.toLowerCase();
   let s = 0;
   let hitMain = it.main.size === 0;
   for (const [w, wt] of it.terms) { if (termRe(w).test(t)) { s += wt * (w.length > 4 ? 1.2 : 1); if (it.main.has(w)) hitMain = true; } }
   if (!hitMain) s *= 0.25;
+  s *= yearFactor(t);
   if (it.numeric && /(₹|rs\.?\s?\d|\d{2,}[,.]?\d*|20\d\d|\+91|@)/i.test(text)) s *= 1.5;
   if (s === 0) return 0;
   return s / Math.sqrt(Math.max(1, text.length / 160));
@@ -191,7 +202,7 @@ async function sitemapUrls(origin) {
   const urls = [];
   const grab = async (u) => {
     try {
-      const r = await fetchWithTimeout(u, 4500, "application/xml,text/xml,*/*");
+      const r = await fetchWithTimeout(u, 3500, "application/xml,text/xml,*/*");
       if (!r.ok) return [];
       const x = (await r.text()).slice(0, 2_000_000);
       return [...x.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => decode(m[1]));
@@ -228,13 +239,16 @@ export async function researchCollege({ college, question }) {
 
   if (info.website) {
     try {
+      const mapP = sitemapUrls(new URL(info.website.replace(/^http:/, "https:")).origin).catch(() => []);
       const home = await homepage(info.website);
       const site = host(home.url) || host(info.website);
       const root = site.split(".").slice(-3).join(".");
       home.paras.forEach((t) => passages.push({ t, s: score(t, it) * 1.1, src: { title: site, url: home.url } }));
       const seen = new Set([home.url]);
       const origin = new URL(home.url).origin;
-      const fromMap = (await sitemapUrls(origin)).map((u) => ({ url: u, text: "" }));
+      let mapped = await mapP;
+      if (!mapped.length && origin !== new URL(info.website.replace(/^http:/, "https:")).origin) mapped = await sitemapUrls(origin);
+      const fromMap = mapped.map((u) => ({ url: u, text: "" }));
       const words = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/[\/_\-.]+/g, " "); } catch { return u; } };
       const cands = [...home.links, ...fromMap]
         .filter((l) => host(l.url).endsWith(root))
