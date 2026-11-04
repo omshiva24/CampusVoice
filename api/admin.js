@@ -173,6 +173,12 @@ export default async function handler(req, res) {
         out.ms = r.ms; out.website = r.website; out.sources = r.sources; out.debug = r.debug; out.notes = notesFor(r);
         break;
       }
+      case "agent": {
+        const r = await el(`/v1/convai/agents/${process.env.ELEVENLABS_AGENT_ID}`);
+        const c = r.data?.conversation_config || {};
+        out.agent = r.ok ? { tts: c.tts, asr: c.asr, language: c.agent?.language, presets: c.language_presets, tools: c.agent?.prompt?.tool_ids, builtIn: Object.keys(c.agent?.prompt?.built_in_tools || {}).filter((k) => c.agent.prompt.built_in_tools[k]), llm: c.agent?.prompt?.llm, overrides: r.data?.platform_settings?.overrides, auth: r.data?.platform_settings?.auth } : short(r.data);
+        break;
+      }
       case "conversations": {
         const r = await el(`/v1/convai/conversations?page_size=10${process.env.ELEVENLABS_AGENT_ID ? `&agent_id=${process.env.ELEVENLABS_AGENT_ID}` : ""}`);
         out.list = r.ok ? r.data.conversations.map((c) => ({ id: c.conversation_id, start: c.start_time_unix_secs, secs: c.call_duration_secs, status: c.status, msgs: c.message_count })) : short(r.data);
