@@ -41,6 +41,20 @@ COLLEGES.slice(0, 7).forEach((c) => {
 });
 function syncChips() { chipBox.querySelectorAll(".chip").forEach((b) => b.setAttribute("aria-pressed", String(b.textContent === collegeInput.value.trim()))); }
 collegeInput.addEventListener("input", syncChips); syncChips();
+// Start reading the chosen college's website in the background, so the first answer comes faster.
+let warmTimer = 0, warmed = "";
+function warm() {
+  clearTimeout(warmTimer);
+  warmTimer = setTimeout(() => {
+    const c = collegeInput.value.trim();
+    if (c.length < 3 || c === warmed) return;
+    warmed = c;
+    fetch("api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "warm", college: c }) }).catch(() => {});
+  }, 900);
+}
+collegeInput.addEventListener("input", warm);
+chipBox.addEventListener("click", warm);
+warm();
 const college = () => collegeInput.value.trim() || "Pondicherry University";
 
 document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {

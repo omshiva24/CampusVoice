@@ -289,7 +289,22 @@ export async function researchCollege({ college, question }) {
         linksOf(g.value.html, g.value.url).filter((l) => /\.pdf(\?|$)/i.test(l.url) && score(`${l.text} ${pdfName(l.url)}`, it) > 0).slice(0, 2)
           .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: pdfTitle(l), url: l.url }); });
       });
-      if (!home) { const late = await within(homeP, Math.max(50, 20000 - (Date.now() - t0))); if (late.ok && !isChallenge(late.v)) { home = late.v; addHome(home); debug.lateHome = true; } }
+      if (!home) {
+        const late = await within(homeP, Math.max(50, 16000 - (Date.now() - t0)));
+        if (late.ok && !isChallenge(late.v)) {
+          home = late.v; addHome(home); debug.lateHome = true;
+          // the homepage often links to this year's pages: read the best new one if there's time
+          const extra = home.links.filter((l) => host(l.url).endsWith(root) && !seen.has(l.url) && !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url))
+            .map((l) => ({ ...l, s: score(`${l.text} ${words(l.url)}`, it) * 1.2 })).filter((l) => l.s >= 3).sort((a, b) => b.s - a.s).slice(0, 2);
+          const left2 = 21000 - (Date.now() - t0);
+          if (extra.length && left2 > 2500) {
+            const got2 = await Promise.allSettled(extra.map((l) => fetchPage(l.url, Math.min(7000, left2))));
+            got2.forEach((g, i) => { if (g.status !== "fulfilled") return; const label = `${site} · ${(extra[i].text || g.value.title || "page").slice(0, 40)}`;
+              htmlToParagraphs(g.value.html).forEach((t) => passages.push({ t, s: score(t, it) * 1.3, src: { title: label, url: g.value.url } })); });
+            debug.extra = got2.map((g, i) => `${g.status === "fulfilled" ? "ok" : "fail"} ${extra[i].url}`);
+          }
+        }
+      }
     } catch (e) { console.warn("site read failed", info.website, e.message); debug.error = e.message; }
   }
   info.wiki.forEach((t) => passages.push({ t, s: score(t, it), src: { title: "Wikipedia", url: info.wikiUrl } }));
@@ -362,4 +377,14 @@ export async function answerCollegeQuestion({ college, question, lang = "en" }) 
   answers.set(key, { at: Date.now(), value });
   if (answers.size > 400) answers.delete(answers.keys().next().value);
   return { ...value, ms: Date.now() - t0 };
+}
+
+// Load a college's website into this server's memory before the first question (makes the first answer faster).
+export async function warmCollege(college) {
+  college = clean(college, 120); if (!college) return { ok: false };
+  const info = await identify(college).catch(() => null);
+  if (!info?.website) return { ok: !!info, website: null };
+  const origin = new URL(info.website.replace(/^http:/, "https:")).origin;
+  await Promise.allSettled([homepage(info.website), sitemapUrls(origin)]);
+  return { ok: true, college: info.title, website: info.website };
 }

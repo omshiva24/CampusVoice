@@ -1,6 +1,6 @@
 // CampusVoice AI — answer endpoint for the website (typed questions and backup voice mode)
 // © 2026 P Om Shiva. All rights reserved. See LICENSE.
-import { answerCollegeQuestion, researchCollege, notesFor, ipOf, limited, readJson } from "./_lib.js";
+import { answerCollegeQuestion, researchCollege, notesFor, warmCollege, ipOf, limited, readJson } from "./_lib.js";
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -13,10 +13,15 @@ export default async function handler(req, res) {
     });
   }
   if (req.method !== "POST") return res.status(405).json({ error: "Use POST." });
+  const early = await readJson(req);
+  if (early.mode === "warm") {
+    if (limited(`warm:${ipOf(req)}`, 20, 10 * 60_000)) return res.status(200).json({ ok: false });
+    return res.status(200).json(await warmCollege(early.college).catch(() => ({ ok: false })));
+  }
   if (limited(`ask:${ipOf(req)}`, 30, 10 * 60_000)) {
     return res.status(429).json({ error: "You're asking very fast. Please wait a minute and try again." });
   }
-  const body = await readJson(req);
+  const body = early;
   try {
     if (body.mode === "notes") {
       // For the web voice agent: the research notes it answers from, plus sources to show on screen.
