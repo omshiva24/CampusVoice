@@ -79,7 +79,7 @@ renderQuick();
 fetch("api/config").then((r) => r.json()).then((cfg) => {
   state.cfg = cfg;
   const vapiWeb = !!(cfg.vapiPublicKey && cfg.vapiAssistantId);
-  $("#mode-badge").textContent = cfg.webVoice ? "Premium voice · ElevenLabs" : vapiWeb ? "Premium voice · Vapi" : "Backup voice · free";
+  $("#mode-badge").textContent = cfg.webVoice ? "Premium voice · ElevenLabs" : vapiWeb ? "Premium voice · Vapi" : "Free voice";
   $("#mode-badge").className = "mode " + (cfg.webVoice || vapiWeb ? "premium" : "backup");
   if (cfg.phoneNumber) {
     const n = $("#phone-number"); n.hidden = false;
@@ -178,6 +178,9 @@ function measure() {
     } else if (state.analyser && state.mode === "listening") {
       const d = new Uint8Array(state.analyser.fftSize); state.analyser.getByteTimeDomainData(d);
       let s = 0; for (const v of d) s += ((v - 128) / 128) ** 2; target = Math.min(1, Math.sqrt(s / d.length) * 4);
+    } else if (state.outAnalyser && state.mode === "speaking") {
+      const d = new Uint8Array(state.outAnalyser.fftSize); state.outAnalyser.getByteTimeDomainData(d);
+      let s = 0; for (const v of d) s += ((v - 128) / 128) ** 2; target = Math.min(1, Math.sqrt(s / d.length) * 4);
     } else if (state.mode === "speaking") {
       state.speakPulse *= 0.92; target = 0.25 + state.speakPulse + 0.15 * Math.abs(Math.sin(performance.now() / 140));
     }
@@ -250,11 +253,14 @@ async function start() {
     }
     if (s.reason === "rate_limited") {
       addSys("You've used the premium voice a lot this hour, so I switched to the free backup voice.");
-    } else if (state.cfg.vapiPublicKey && state.cfg.vapiAssistantId) {
+    } else if (state.cfg.vapiPublicKey && state.cfg.vapiAssistantId && !recentlyDown("vapi")) {
       try { await startVapiWeb(); return; }
-      catch (e) { console.warn("Vapi voice failed:", e); }
-    }
-    if (s.mode === "eleven") addSys("Premium voice isn't available right now (the free minutes may be used up). Switched to the free backup voice.");
+      catch (e) {
+        console.warn("Vapi voice failed:", e); markDown("vapi");
+        try { state.vapiWeb?.stop(); } catch {} state.vapiWeb = null;
+        addSys("The premium voice is resting right now (its free credit may be used up). Switched to the free voice, it still answers out loud.");
+      }
+    } else if (s.mode === "eleven") addSys("Premium voice isn't available right now. Switched to the free voice.");
     await startBackup();
   } finally { mic.disabled = false; }
 }
@@ -302,6 +308,9 @@ async function startEleven(signedUrl) {
   if (!connected) { try { conv.endSession(); } catch {} state.conv = null; state.engine = null; throw new Error("no connection"); }
 }
 
+const recentlyDown = (k) => { try { return Date.now() - Number(localStorage.getItem(`cv_down_${k}`) || 0) < 30 * 60_000; } catch { return false; } };
+const markDown = (k) => { try { localStorage.setItem(`cv_down_${k}`, String(Date.now())); } catch {} };
+
 // ---------- premium voice through Vapi (same agent brain, same lookup tool) ----------
 let VapiClass = null;
 async function loadVapi() {
@@ -348,7 +357,7 @@ async function startVapiWeb() {
 // ---------- backup voice: the browser's own speech tools (free) ----------
 async function startBackup() {
   state.engine = "backup";
-  $("#mode-badge").textContent = "Backup voice · free"; $("#mode-badge").className = "mode backup";
+  $("#mode-badge").textContent = "Free voice"; $("#mode-badge").className = "mode backup";
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     addSys("This browser can't listen to voice. Type your question below and I'll answer out loud. (Chrome on Android or a computer supports voice.)");
@@ -410,18 +419,36 @@ function pickVoice(lang) {
   return null;
 }
 function speak(text, lang) {
+  const v = "speechSynthesis" in window ? pickVoice(lang) : null;
+  if (!v) return speakServer(text, lang);
   return new Promise((done) => {
-    if (!("speechSynthesis" in window)) return done();
-    const v = pickVoice(lang);
-    if (lang === "ta" && !v) { addSys("Your device has no Tamil voice installed, so the answer is shown as text."); return done(); }
     const u = new SpeechSynthesisUtterance(text);
-    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = lang === "ta" ? "ta-IN" : "en-IN";
-    u.rate = 1.02;
+    u.voice = v; u.lang = v.lang; u.rate = 1.02;
     u.onstart = () => setMode("speaking");
     u.onboundary = () => { state.speakPulse = 0.45; };
     u.onend = u.onerror = () => done();
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   });
+}
+// No voice on this device for the language (often Tamil on computers): use a natural AI voice from the server.
+let audioCtx = null;
+async function speakServer(text, lang) {
+  try {
+    setMode("thinking");
+    const r = await fetch("api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, lang }) });
+    if (!r.ok) throw new Error("tts " + r.status);
+    const url = URL.createObjectURL(await r.blob());
+    const audio = new Audio(url);
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaElementSource(audio); const an = audioCtx.createAnalyser(); an.fftSize = 1024;
+      src.connect(an); an.connect(audioCtx.destination); state.outAnalyser = an;
+    } catch {}
+    await new Promise((done) => { audio.onplay = () => setMode("speaking"); audio.onended = audio.onerror = done; audio.play().catch(done); });
+    state.outAnalyser = null; URL.revokeObjectURL(url);
+  } catch {
+    addSys(lang === "ta" ? "இந்த சாதனத்தில் தமிழ் குரல் இல்லை, அதனால் பதில் எழுத்தாகக் காட்டப்படுகிறது." : "Voice playback isn't available here, so the answer is shown as text.");
+  }
 }
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
 
@@ -467,12 +494,12 @@ callBtn.addEventListener("click", async () => {
         $("#call-ring").classList.remove("on"); callState.textContent = "Call ended";
       });
       vapi.on("message", (m) => { if (m?.type === "transcript" && m.transcriptType === "final") logCall(m.role, m.transcript); });
-      vapi.on("error", (e) => { console.warn("vapi", e); callState.textContent = "The phone agent couldn't connect. Please try again later."; callBtn.disabled = false; });
+      vapi.on("error", (e) => { console.warn("vapi", e); callState.textContent = "The phone line is resting right now (free credit may be used up). Use the voice agent above, it works for free."; callBtn.disabled = false; });
     }
     callLog.innerHTML = "";
     await vapi.start(state.cfg.vapiAssistantId);
   } catch (e) {
-    console.warn(e); callState.textContent = "The phone agent couldn't connect. Please try again later."; callBtn.disabled = false;
+    console.warn(e); callState.textContent = "The phone line is resting right now (free credit may be used up). Use the voice agent above, it works for free."; callBtn.disabled = false;
   }
 });
 

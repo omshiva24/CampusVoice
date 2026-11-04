@@ -43,6 +43,9 @@
     },
     "api/admin.js": {
       "maxDuration": 60
+    },
+    "api/speak.js": {
+      "maxDuration": 30
     }
   }
 }
