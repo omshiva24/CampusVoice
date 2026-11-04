@@ -183,7 +183,7 @@ async function homepage(url) {
   const tries = [url.replace(/^http:/, "https:"), url];
   let p = null, err = null;
   for (const u of [...new Set(tries)]) {
-    try { p = await fetchPage(u, 7000); } catch (e) { err = e; continue; }
+    try { p = await fetchPage(u, 6000); } catch (e) { err = e; continue; }
     // follow a meta-refresh or a simple script redirect once
     const next = /http-equiv=["']?refresh["']?[^>]*url=([^"'>\s]+)/i.exec(p.html)?.[1] || /(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i.exec(p.html)?.[1];
     if (next && htmlToParagraphs(p.html).length < 3) { try { p = await fetchPage(new URL(next, p.url).href, 7000); } catch {} }
@@ -204,21 +204,19 @@ async function sitemapUrls(origin) {
   const urls = [];
   const grab = async (u) => {
     try {
-      const r = await fetchWithTimeout(u, 3500, "application/xml,text/xml,*/*");
+      const r = await fetchWithTimeout(u, 3000, "application/xml,text/xml,*/*");
       if (!r.ok) return [];
       const x = (await r.text()).slice(0, 2_000_000);
       return [...x.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => decode(m[1]));
     } catch { return []; }
   };
-  for (const path of ["/sitemap.xml", "/wp-sitemap.xml", "/sitemap_index.xml"]) {
-    const locs = await grab(origin + path);
-    if (!locs.length) continue;
-    const subs = locs.filter((l) => /\.xml(\?|$)/i.test(l));
-    urls.push(...locs.filter((l) => !/\.xml(\?|$)/i.test(l)));
-    const children = await Promise.all(subs.filter((l) => /page|post|admission|fee|course|program|default|sitemap\d|main/i.test(l)).slice(0, 4).map(grab));
-    children.forEach((c) => urls.push(...c.filter((l) => !/\.xml(\?|$)/i.test(l))));
-    break;
-  }
+  // try the usual sitemap locations at the same time, use the first that has entries
+  const all = await Promise.all(["/sitemap.xml", "/wp-sitemap.xml", "/sitemap_index.xml"].map((path) => grab(origin + path)));
+  const locs = all.find((l) => l.length) || [];
+  const subs = locs.filter((l) => /\.xml(\?|$)/i.test(l));
+  urls.push(...locs.filter((l) => !/\.xml(\?|$)/i.test(l)));
+  const children = await Promise.all(subs.filter((l) => /page|post|admission|fee|course|program|default|sitemap\d|main|depart/i.test(l)).slice(0, 4).map(grab));
+  children.forEach((c) => urls.push(...c.filter((l) => !/\.xml(\?|$)/i.test(l))));
   const value = [...new Set(urls)].slice(0, 5000);
   maps.set(origin, { at: Date.now(), value });
   if (maps.size > 100) maps.delete(maps.keys().next().value);
@@ -265,7 +263,8 @@ export async function researchCollege({ college, question }) {
       debug.sitemap = fromMap.length; debug.top = cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`);
       for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: pdfTitle(l), url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
-      const got = await Promise.allSettled(pages.map((l) => fetchPage(l.url, 6000)));
+      const left = 15000 - (Date.now() - t0);
+      const got = left > 2500 ? await Promise.allSettled(pages.map((l) => fetchPage(l.url, Math.min(5500, left)))) : [];
       debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? (isChallenge({ title: g.value.title, paras: [1, 2, 3] }) ? "bot check" : "ok") : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
       got.forEach((g, i) => {
         if (g.status !== "fulfilled" || /validation|captcha|attention required|access denied/i.test(g.value.title)) return;
