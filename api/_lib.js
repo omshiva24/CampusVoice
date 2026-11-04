@@ -99,12 +99,17 @@ const TOPICS = {
 const STOP = new Set("what when where which who whom whose how does do did is are was were the a an of for to in on at by with and or about from this that there their them they it its can could would should will shall may might much many any some your you me my i we our please tell know give list".split(" "));
 function intent(question) {
   const q = ` ${question.toLowerCase()} `;
-  const topics = Object.entries(TOPICS).filter(([, ws]) => ws.some((w) => q.includes(w))).map(([t]) => t);
-  const words = [...new Set(q.replace(/[^\p{L}\p{N}.₹ ]+/gu, " ").split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)))];
+  const topics = Object.entries(TOPICS).filter(([, ws]) => ws.some((w) => termRe(w).test(q))).map(([t]) => t);
+  const primary = topics.filter((t) => t !== "courses" && t !== "campus");
+  const words = [...new Set(q.replace(/[^\p{L}\p{N}.₹ ]+/gu, " ").split(/\s+/).map((w) => w.replace(/^\.+|\.+$/g, "")).filter((w) => w.length > 2 && !STOP.has(w)))];
   const terms = new Map();
-  for (const t of topics) for (const w of TOPICS[t]) terms.set(w, 3);
+  const main = new Set();
+  for (const t of topics) for (const w of TOPICS[t]) {
+    const isMain = !primary.length || primary.includes(t);
+    terms.set(w, isMain ? 3 : 1); if (isMain) main.add(w);
+  }
   for (const w of words) if (!terms.has(w)) terms.set(w, 1.5);
-  return { topics, terms, numeric: topics.some((t) => ["fees", "admission", "placement", "rank", "contact", "hostel"].includes(t)) };
+  return { topics, terms, main, numeric: primary.some((t) => ["fees", "admission", "placement", "rank", "contact", "hostel"].includes(t)) };
 }
 const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const reCache = new Map();
@@ -115,7 +120,9 @@ function termRe(w) {
 function score(text, it) {
   const t = text.toLowerCase();
   let s = 0;
-  for (const [w, wt] of it.terms) { if (termRe(w).test(t)) s += wt * (w.length > 4 ? 1.2 : 1); }
+  let hitMain = it.main.size === 0;
+  for (const [w, wt] of it.terms) { if (termRe(w).test(t)) { s += wt * (w.length > 4 ? 1.2 : 1); if (it.main.has(w)) hitMain = true; } }
+  if (!hitMain) s *= 0.25;
   if (it.numeric && /(₹|rs\.?\s?\d|\d{2,}[,.]?\d*|20\d\d|\+91|@)/i.test(text)) s *= 1.5;
   if (s === 0) return 0;
   return s / Math.sqrt(Math.max(1, text.length / 160));
@@ -160,8 +167,17 @@ const homes = new Map();
 async function homepage(url) {
   const hit = homes.get(url);
   if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.value;
-  const p = await fetchPage(url, 7000);
-  const value = { url: p.url, title: p.title, paras: htmlToParagraphs(p.html), links: linksOf(p.html, p.url) };
+  const tries = [url.replace(/^http:/, "https:"), url];
+  let p = null, err = null;
+  for (const u of [...new Set(tries)]) {
+    try { p = await fetchPage(u, 7000); } catch (e) { err = e; continue; }
+    // follow a meta-refresh or a simple script redirect once
+    const next = /http-equiv=["']?refresh["']?[^>]*url=([^"'>\s]+)/i.exec(p.html)?.[1] || /(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i.exec(p.html)?.[1];
+    if (next && htmlToParagraphs(p.html).length < 3) { try { p = await fetchPage(new URL(next, p.url).href, 7000); } catch {} }
+    if (p && (htmlToParagraphs(p.html).length || linksOf(p.html, p.url).length)) break;
+  }
+  if (!p) throw err || new Error("site unreachable");
+  const value = { url: p.url, title: p.title, paras: htmlToParagraphs(p.html), links: linksOf(p.html, p.url), bytes: p.html.length, head: p.html.slice(0, 160).replace(/\s+/g, " ") };
   homes.set(url, { at: Date.now(), value });
   if (homes.size > 200) homes.delete(homes.keys().next().value);
   return value;
@@ -225,7 +241,7 @@ export async function researchCollege({ college, question }) {
         .map((l) => ({ ...l, s: score(`${l.text} ${words(l.url)}`, it) * (l.text ? 1.2 : 1) }))
         .filter((l) => l.s > 0 && !seen.has(l.url) && (seen.add(l.url), true))
         .sort((a, b) => b.s - a.s);
-      debug.home = { title: home.title, paras: home.paras.length, links: home.links.length, sitemap: fromMap.length, top: cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`) };
+      debug.home = { url: home.url, bytes: home.bytes, head: home.head, title: home.title, paras: home.paras.length, links: home.links.length, sitemap: fromMap.length, top: cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`) };
       for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: l.text || "PDF document", url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
       const got = await Promise.allSettled(pages.map((l) => fetchPage(l.url, 6000)));
