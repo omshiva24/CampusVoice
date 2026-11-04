@@ -211,9 +211,7 @@ async function sitemapUrls(origin) {
   const urls = [];
   const grab = async (u) => {
     try {
-      const r = await fetchWithTimeout(u, 3000, "application/xml,text/xml,*/*");
-      if (!r.ok) return [];
-      const x = (await r.text()).slice(0, 2_000_000);
+      const x = (await fetchPage(u, 3200)).html;
       return [...x.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => decode(m[1]));
     } catch { return []; }
   };
