@@ -1,0 +1,10 @@
+{
+  "name": "campusvoice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CampusVoice AI: a voice agent that answers questions about any college in English and Tamil, on the web and on phone calls. Built by P Om Shiva.",
+  "author": "P Om Shiva (https://github.com/omshiva24)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": { "node": ">=20" }
+}
