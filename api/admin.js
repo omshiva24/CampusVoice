@@ -170,7 +170,7 @@ export default async function handler(req, res) {
       }
       case "research": {
         const r = await researchCollege({ college: q.college || "Pondicherry University", question: q.question || "What is the fee for M.Tech CSE?" });
-        out.ms = r.ms; out.website = r.website; out.sources = r.sources; out.notes = notesFor(r);
+        out.ms = r.ms; out.website = r.website; out.sources = r.sources; out.debug = r.debug; out.notes = notesFor(r);
         break;
       }
       case "conversations": {

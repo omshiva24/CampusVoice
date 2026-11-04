@@ -86,7 +86,7 @@ async function fetchPage(url, ms = 6500) {
 
 // ---------- what the question is about ----------
 const TOPICS = {
-  fees: ["fee", "fees", "tuition", "cost", "₹", "rs.", "inr", "charges", "payment", "fee structure", "கட்டணம்"],
+  fees: ["fee", "fees", "tuition", "cost", "₹", "rs", "inr", "charges", "payment", "fee structure", "கட்டணம்"],
   admission: ["admission", "admissions", "apply", "application", "last date", "deadline", "entrance", "eligibility", "counselling", "prospectus", "cuet", "jee", "tnea", "intake", "seats", "சேர்க்கை"],
   hostel: ["hostel", "hostels", "accommodation", "residence", "mess", "dormitory", "boarding", "விடுதி"],
   placement: ["placement", "placements", "recruit", "recruiters", "package", "lpa", "ctc", "salary", "career", "training and placement", "வேலைவாய்ப்பு"],
@@ -106,10 +106,16 @@ function intent(question) {
   for (const w of words) if (!terms.has(w)) terms.set(w, 1.5);
   return { topics, terms, numeric: topics.some((t) => ["fees", "admission", "placement", "rank", "contact", "hostel"].includes(t)) };
 }
+const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const reCache = new Map();
+function termRe(w) {
+  if (!reCache.has(w)) reCache.set(w, /^[a-z0-9.]+$/i.test(w) ? new RegExp(`(^|[^a-z0-9])${esc(w)}(?=$|[^a-z0-9])`, "i") : new RegExp(esc(w), "i"));
+  return reCache.get(w);
+}
 function score(text, it) {
-  const t = ` ${text.toLowerCase()} `;
+  const t = text.toLowerCase();
   let s = 0;
-  for (const [w, wt] of it.terms) { if (t.includes(w)) s += wt * (w.length > 4 ? 1.2 : 1); }
+  for (const [w, wt] of it.terms) { if (termRe(w).test(t)) s += wt * (w.length > 4 ? 1.2 : 1); }
   if (it.numeric && /(₹|rs\.?\s?\d|\d{2,}[,.]?\d*|20\d\d|\+91|@)/i.test(text)) s *= 1.5;
   if (s === 0) return 0;
   return s / Math.sqrt(Math.max(1, text.length / 160));
@@ -161,6 +167,35 @@ async function homepage(url) {
   return value;
 }
 
+// Pages listed in the site's sitemap (most college sites have one), so we can find deep pages too.
+const maps = new Map();
+async function sitemapUrls(origin) {
+  const hit = maps.get(origin);
+  if (hit && Date.now() - hit.at < 12 * 3600_000) return hit.value;
+  const urls = [];
+  const grab = async (u) => {
+    try {
+      const r = await fetchWithTimeout(u, 4500, "application/xml,text/xml,*/*");
+      if (!r.ok) return [];
+      const x = (await r.text()).slice(0, 2_000_000);
+      return [...x.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => decode(m[1]));
+    } catch { return []; }
+  };
+  for (const path of ["/sitemap.xml", "/wp-sitemap.xml", "/sitemap_index.xml"]) {
+    const locs = await grab(origin + path);
+    if (!locs.length) continue;
+    const subs = locs.filter((l) => /\.xml(\?|$)/i.test(l));
+    urls.push(...locs.filter((l) => !/\.xml(\?|$)/i.test(l)));
+    const children = await Promise.all(subs.filter((l) => /page|post|admission|fee|course|program|default|sitemap\d|main/i.test(l)).slice(0, 4).map(grab));
+    children.forEach((c) => urls.push(...c.filter((l) => !/\.xml(\?|$)/i.test(l))));
+    break;
+  }
+  const value = [...new Set(urls)].slice(0, 5000);
+  maps.set(origin, { at: Date.now(), value });
+  if (maps.size > 100) maps.delete(maps.keys().next().value);
+  return value;
+}
+
 // ---------- the research step used by every channel ----------
 export async function researchCollege({ college, question }) {
   college = clean(college, 120); question = clean(question, 300);
@@ -172,6 +207,7 @@ export async function researchCollege({ college, question }) {
   const passages = [];
   const sources = [];
   const docs = [];
+  const debug = {};
   const addSource = (title, url) => { if (url && !sources.some((s) => s.url === url)) sources.push({ title, url }); };
 
   if (info.website) {
@@ -181,14 +217,19 @@ export async function researchCollege({ college, question }) {
       const root = site.split(".").slice(-3).join(".");
       home.paras.forEach((t) => passages.push({ t, s: score(t, it) * 1.1, src: { title: site, url: home.url } }));
       const seen = new Set([home.url]);
-      const cands = home.links
+      const origin = new URL(home.url).origin;
+      const fromMap = (await sitemapUrls(origin)).map((u) => ({ url: u, text: "" }));
+      const words = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/[\/_\-.]+/g, " "); } catch { return u; } };
+      const cands = [...home.links, ...fromMap]
         .filter((l) => host(l.url).endsWith(root))
-        .map((l) => ({ ...l, s: score(`${l.text} ${decodeURIComponent(l.url).replace(/[\/_\-.]/g, " ")}`, it) }))
+        .map((l) => ({ ...l, s: score(`${l.text} ${words(l.url)}`, it) * (l.text ? 1.2 : 1) }))
         .filter((l) => l.s > 0 && !seen.has(l.url) && (seen.add(l.url), true))
         .sort((a, b) => b.s - a.s);
+      debug.home = { title: home.title, paras: home.paras.length, links: home.links.length, sitemap: fromMap.length, top: cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`) };
       for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: l.text || "PDF document", url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
       const got = await Promise.allSettled(pages.map((l) => fetchPage(l.url, 6000)));
+      debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? "ok" : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
       got.forEach((g, i) => {
         if (g.status !== "fulfilled") return;
         const label = `${site} · ${(pages[i].text || g.value.title || "page").slice(0, 40)}`;
@@ -196,7 +237,7 @@ export async function researchCollege({ college, question }) {
         linksOf(g.value.html, g.value.url).filter((l) => /\.pdf(\?|$)/i.test(l.url) && score(l.text, it) > 0).slice(0, 2)
           .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: l.text || "PDF document", url: l.url }); });
       });
-    } catch (e) { console.warn("site read failed", info.website, e.message); }
+    } catch (e) { console.warn("site read failed", info.website, e.message); debug.error = e.message; }
   }
   info.wiki.forEach((t) => passages.push({ t, s: score(t, it), src: { title: "Wikipedia", url: info.wikiUrl } }));
 
@@ -212,7 +253,7 @@ export async function researchCollege({ college, question }) {
   if (!picked.length && info.wiki.length) { picked.push({ t: info.wiki.slice(0, 2).join(" "), src: { title: "Wikipedia", url: info.wikiUrl } }); addSource("Wikipedia", info.wikiUrl); }
   docs.slice(0, 3).forEach((d) => addSource(`PDF: ${d.title.slice(0, 40)}`, d.url));
   console.log(`research ${Date.now() - t0}ms site=${info.website || "-"} passages=${picked.length} docs=${docs.length} :: ${college} :: ${question.slice(0, 60)}`);
-  return { college: info.title, website: info.website, wikiUrl: info.wikiUrl, passages: picked, docs: docs.slice(0, 3), sources: sources.slice(0, 5), ms: Date.now() - t0 };
+  return { college: info.title, website: info.website, wikiUrl: info.wikiUrl, passages: picked, docs: docs.slice(0, 3), sources: sources.slice(0, 5), ms: Date.now() - t0, debug };
 }
 
 // Notes for a voice agent's LLM: it answers only from these.
