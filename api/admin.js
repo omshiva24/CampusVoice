@@ -12,11 +12,11 @@ export const AGENT_PROMPT = `You are CampusVoice, a warm, upbeat voice helpdesk 
 
 The college the user picked on the website is: {{college_name}}. If the user asks about a different college, use that one instead.
 
-Language: reply in the language the user speaks, English or Tamil. If they speak Tamil, reply in simple, natural spoken Tamil (words like B.Tech, hostel or NIRF can stay in English).
+Language: reply in the language the user speaks, English or Tamil. If they speak Tamil, reply in simple, natural spoken Tamil written in Tamil script (words like B.Tech, hostel or NIRF can stay in English). Callers only speak English or Tamil: if their words arrive in another Indian script (Telugu, Kannada, Malayalam or Hindi letters), they were speaking Tamil, so understand it as Tamil and reply in Tamil.
 
 How you answer:
 1. For ANY fact about a college (fees, admission dates, eligibility, courses, cut-offs, hostel, placements, ranking, contact details, location, scholarships), ALWAYS call the college_lookup tool first. Never answer facts from memory.
-2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 40 words), then name the source briefly, like "according to their official website". Never read out all the notes.
+2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 30 words), then name the source briefly, like "according to their official website". Never read out all the notes, and never read the SOURCES_FOR_SCREEN part.
 3. If the tool couldn't find it, say so honestly and suggest the official website or the admission office.
 4. This is a voice conversation: keep every reply short. No lists, no links, no web addresses, no markdown.
 5. End with a very short question like "Anything else?"
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
           name: "CampusVoice Phone",
           firstMessage: "Hi! This is CampusVoice, your college helpdesk. Which college would you like to know about? You can speak in English or Tamil.",
           model: {
-            provider: q.provider || "openai", model: q.model || "gpt-4o-mini", temperature: 0.3, maxTokens: 160,
+            provider: q.provider || "openai", model: q.model || "gpt-4o-mini", temperature: 0.3, maxTokens: 260,
             messages: [{ role: "system", content: PHONE_PROMPT }],
             tools: [{
               type: "function", async: false,
@@ -152,8 +152,11 @@ export default async function handler(req, res) {
             }],
           },
           voice: q.vvoice ? { provider: "11labs", voiceId: q.vvoice, model: "eleven_flash_v2_5" } : { provider: "vapi", voiceId: q.vapivoice || "Elliot" },
-          transcriber: q.stt === "deepgram" ? { provider: "deepgram", model: "nova-3", language: "multi" }
-            : { provider: q.stt || "google", model: q.sttmodel || "gemini-2.5-flash", language: "Multilingual" },
+          // ElevenLabs Scribe understands Tamil and English in the same call; Google is the backup listener.
+          transcriber: q.stt === "google" ? { provider: "google", model: q.sttmodel || "gemini-2.5-flash", language: "Multilingual" }
+            : { provider: "11labs", model: q.sttmodel || "scribe_v2_realtime", ...(q.sttlang ? { language: q.sttlang } : {}),
+                fallbackPlan: { transcribers: [{ provider: "google", model: "gemini-2.5-flash", language: "Multilingual" }] } },
+          clientMessages: ["conversation-update", "transcript", "tool-calls", "speech-update", "status-update", "hang", "user-interrupted"],
           // Long answers count as "silence" for Vapi until they finish, so give the agent time to speak.
           silenceTimeoutSeconds: 60,
           maxDurationSeconds: 240,

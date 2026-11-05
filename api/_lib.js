@@ -235,7 +235,8 @@ const pdfTitle = (l) => (l.text && !/^https?:|^www\./i.test(l.text) ? l.text : p
 const pdfName = (u) => { try { return decodeURIComponent(new URL(u).pathname.split("/").pop()).replace(/\.pdf$/i, "").replace(/[_\-]+/g, " ").slice(0, 60); } catch { return "PDF document"; } };
 
 // ---------- the research step used by every channel ----------
-export async function researchCollege({ college, question }) {
+export async function researchCollege({ college, question, budget = 20000 }) {
+  // budget: rough time limit in ms (voice calls use a shorter one so nobody waits on the line)
   college = clean(college, 120); question = clean(question, 300);
   if (!college) { const e = new Error("Please tell me which college you mean."); e.status = 400; throw e; }
   if (!question) { const e = new Error("Please ask a question about the college."); e.status = 400; throw e; }
@@ -260,7 +261,7 @@ export async function researchCollege({ college, question }) {
       debug.tMap = Date.now() - tH; debug.tIdent = tIdent;
       // If the sitemap already points to matching pages, don't wait long for a slow homepage.
       const strong = mapped.some((u) => score(words(u), it) >= 3);
-      const hr = await within(homeP, Math.max(400, (strong ? 7000 : 10500) - (Date.now() - tH)));
+      const hr = await within(homeP, Math.max(400, budget * (strong ? 0.35 : 0.52) - (Date.now() - tH)));
       let home = hr.ok && !isChallenge(hr.v) ? hr.v : null;
       const site = host(home?.url || info.website);
       const root = site.split(".").slice(-3).join(".");
@@ -278,9 +279,9 @@ export async function researchCollege({ college, question }) {
       debug.sitemap = fromMap.length; debug.top = cands.slice(0, 6).map((c) => `${c.s.toFixed(1)} ${c.text.slice(0, 30)} ${c.url}`);
       for (const l of cands.filter((l) => /\.pdf(\?|$)/i.test(l.url)).slice(0, 3)) docs.push({ title: pdfTitle(l), url: l.url });
       const pages = cands.filter((l) => !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url)).slice(0, 3);
-      const left = 20000 - (Date.now() - t0);
+      const left = budget - (Date.now() - t0);
       const tP = Date.now();
-      const got = left > 2500 ? await Promise.allSettled(pages.map((l) => fetchPage(l.url, Math.min(8500, left)))) : [];
+      const got = left > 2000 ? await Promise.allSettled(pages.map((l) => fetchPage(l.url, Math.min(8500, left)))) : [];
       debug.tPages = Date.now() - tP;
       debug.pages = got.map((g, i) => `${g.status === "fulfilled" ? (isChallenge({ title: g.value.title, paras: [1, 2, 3] }) ? "bot check" : "ok") : "fail " + (g.reason?.message || "").slice(0, 40)} ${pages[i].url}`);
       got.forEach((g, i) => {
@@ -291,13 +292,13 @@ export async function researchCollege({ college, question }) {
           .forEach((l) => { if (!docs.some((d) => d.url === l.url)) docs.push({ title: pdfTitle(l), url: l.url }); });
       });
       if (!home) {
-        const late = await within(homeP, Math.max(50, 16000 - (Date.now() - t0)));
+        const late = await within(homeP, Math.max(50, budget * 0.8 - (Date.now() - t0)));
         if (late.ok && !isChallenge(late.v)) {
           home = late.v; addHome(home); debug.lateHome = true;
           // the homepage often links to this year's pages: read the best new one if there's time
           const extra = home.links.filter((l) => host(l.url).endsWith(root) && !seen.has(l.url) && !/\.(pdf|jpe?g|png|docx?|xlsx?|zip)(\?|$)/i.test(l.url))
             .map((l) => ({ ...l, s: score(`${l.text} ${words(l.url)}`, it) * 1.2 })).filter((l) => l.s >= 3).sort((a, b) => b.s - a.s).slice(0, 2);
-          const left2 = 21000 - (Date.now() - t0);
+          const left2 = budget * 1.05 - (Date.now() - t0);
           if (extra.length && left2 > 2500) {
             const got2 = await Promise.allSettled(extra.map((l) => fetchPage(l.url, Math.min(7000, left2))));
             got2.forEach((g, i) => { if (g.status !== "fulfilled") return; const label = `${site} · ${(extra[i].text || g.value.title || "page").slice(0, 40)}`;
@@ -326,12 +327,18 @@ export async function researchCollege({ college, question }) {
 }
 
 // Notes for a voice agent's LLM: it answers only from these.
-export function notesFor(r) {
+export function notesFor(r, { max = Infinity, lang } = {}) {
   const lines = [`College: ${r.college}${r.website ? ` (official website: ${host(r.website)})` : " (official website not found)"}.`];
   if (!r.passages.length) lines.push("No relevant information was found on the official website or Wikipedia for this question.");
-  r.passages.forEach((p) => lines.push(`[${p.src.title}] ${p.t}`));
+  let used = 0;
+  for (const p of r.passages) {
+    const line = `[${p.src.title}] ${p.t}`;
+    if (used && used + line.length > max) break;
+    lines.push(line.slice(0, max)); used += line.length;
+  }
   if (r.docs.length) lines.push(`Documents on the official website: ${r.docs.map((d) => `"${d.title}" (PDF)`).join("; ")}.`);
   lines.push("Answer ONLY from these notes, briefly, and mention the source. If the exact answer isn't here, say so honestly and suggest the official website or admission office (mention a matching PDF document if one is listed). Information may be from an earlier year: say which year if the notes show it.");
+  if (lang === "ta") lines.push("The user is speaking Tamil: reply in simple spoken Tamil, in Tamil script.");
   return lines.join("\n");
 }
 

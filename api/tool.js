@@ -12,15 +12,19 @@ function authorised(req) {
   return req.headers["x-tool-secret"] === secret || req.headers["x-vapi-secret"] === secret;
 }
 
-async function lookup(args) {
+async function lookup(args, { budget, max } = {}) {
   const a = typeof args === "string" ? (() => { try { return JSON.parse(args); } catch { return {}; } })() : (args || {});
   try {
-    const r = await researchCollege({ college: a.college || a.college_name, question: a.question });
-    return { ok: true, text: notesFor(r), r };
+    const r = await researchCollege({ college: a.college || a.college_name, question: a.question, budget });
+    return { ok: true, text: notesFor(r, { max, lang: a.language }), r };
   } catch (e) {
     return { ok: false, text: e.message || "I couldn't find that right now." };
   }
 }
+// One line of text (Vapi ignores results with line breaks).
+const flat = (t) => t.replace(/\s*\n\s*/g, " • ").replace(/\s+/g, " ").trim();
+// The website shows these as source chips, so it doesn't have to research the same question twice.
+const screenSources = (r) => `SOURCES_FOR_SCREEN (never read these out): ${r.sources.map((s) => `${s.title.replace(/[|;]/g, " ")} | ${s.url}`).join(" ;; ")} ;; ms=${r.ms}`;
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -33,9 +37,9 @@ export default async function handler(req, res) {
   if (msg && (msg.type === "tool-calls" || msg.toolCallList || msg.toolWithToolCallList)) {
     const calls = msg.toolCallList || (msg.toolWithToolCallList || []).map((t) => t.toolCall) || [];
     const results = await Promise.all(calls.map(async (c) => {
-      const out = await lookup(c.function?.arguments ?? c.arguments);
-      // Vapi needs the result as ONE line of text (line breaks make the agent ignore it).
-      return { toolCallId: c.id, result: out.text.replace(/\s*\n\s*/g, " • ").replace(/\s+/g, " ").slice(0, 1500) };
+      // Voice callers are waiting on the line: research with a shorter time limit and keep the notes short.
+      const out = await lookup(c.function?.arguments ?? c.arguments, { budget: 10000, max: 1100 });
+      return { toolCallId: c.id, result: out.ok ? `${flat(out.text)} • ${screenSources(out.r)}` : flat(out.text) };
     }));
     return res.status(200).json({ results });
   }

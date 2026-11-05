@@ -308,6 +308,19 @@ async function startEleven(signedUrl) {
   if (!connected) { try { conv.endSession(); } catch {} state.conv = null; state.engine = null; throw new Error("no connection"); }
 }
 
+// "SOURCES_FOR_SCREEN (...): Title | https://… ;; Title | https://… ;; ms=6200" → { sources, ms }
+function sourcesFrom(text) {
+  const m = /SOURCES_FOR_SCREEN[^:]*:\s*(.*)$/.exec(text); const out = { sources: [], ms: 0 };
+  if (!m) return out;
+  for (const part of m[1].split(" ;; ")) {
+    const t = part.trim(), k = /^ms=(\d+)/.exec(t);
+    if (k) { out.ms = Number(k[1]); continue; }
+    const [title, url] = t.split(" | ");
+    if (url && /^https?:\/\//.test(url.trim())) out.sources.push({ title: title.trim(), url: url.trim() });
+  }
+  return out;
+}
+
 const recentlyDown = (k) => { try { return Date.now() - Number(localStorage.getItem(`cv_down_${k}`) || 0) < 30 * 60_000; } catch { return false; } };
 const markDown = (k) => { try { localStorage.setItem(`cv_down_${k}`, String(Date.now())); } catch {} };
 
@@ -333,7 +346,7 @@ async function startVapiWeb() {
   v.on("speech-start", () => setMode("speaking"));
   v.on("speech-end", () => setMode("listening"));
   v.on("volume-level", (l) => { state.vapiLevel = l; });
-  const shown = new Set();
+  const shown = new Set(), pending = new Map();
   v.on("message", async (m) => {
     if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) bubble(m.role === "user" ? "user" : "ai", m.transcript);
     if (m?.type === "tool-calls") {
@@ -342,8 +355,24 @@ async function startVapiWeb() {
         let a = c.function?.arguments || {}; if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }
         setMode("thinking");
         const el = searching(a.college || college());
-        ask(a.question || "", a.college || college(), a.language || state.lang, "notes").then((r) => showSources(el, r))
-          .catch(() => { el.classList.remove("search"); el.querySelector(".msg").textContent = "Read the official website"; });
+        // The agent's own lookup sends its sources back in a conversation update.
+        // Only if that never arrives do we look it up ourselves (so the college website isn't read twice at once).
+        const timer = setTimeout(() => {
+          if (!pending.delete(c.id)) return;
+          ask(a.question || "", a.college || college(), a.language || state.lang, "notes").then((r) => showSources(el, r))
+            .catch(() => { el.classList.remove("search"); el.querySelector(".msg").textContent = "Read the official website"; });
+        }, 25000);
+        pending.set(c.id, { el, timer });
+      }
+    }
+    if (m?.type === "conversation-update" && pending.size) {
+      for (const x of [...(m.messages || []), ...(m.messagesOpenAIFormatted || [])]) {
+        const text = typeof x?.result === "string" ? x.result : typeof x?.content === "string" ? x.content : "";
+        if (!text.includes("SOURCES_FOR_SCREEN")) continue;
+        const id = x.toolCallId || x.tool_call_id || [...pending.keys()][0];
+        const p = pending.get(id); if (!p) continue;
+        pending.delete(id); clearTimeout(p.timer);
+        showSources(p.el, sourcesFrom(text));
       }
     }
   });
