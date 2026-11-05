@@ -430,7 +430,10 @@ async function startVapiWeb() {
   });
   // Warm up the lookup server for this college while the agent says hello.
   fetch("api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "warm", college: college() }) }).catch(() => {});
-  const overrides = { firstMessage: first, variableValues: { college_name: college() } };
+  const NAME = { hi: "Hindi", ta: "Tamil", te: "Telugu", ml: "Malayalam" }[state.lang];
+  // tell the agent which language the caller picked (some scripts look alike to the listener, like Telugu and Kannada)
+  const hint = NAME ? `The caller picked ${NAME} on the website: reply in ${NAME}, in ${NAME} script, even if their words arrive in a similar-looking script (like Kannada or Tamil letters), unless they clearly speak English.` : "";
+  const overrides = { firstMessage: first, variableValues: { college_name: college(), language_hint: hint } };
   // A language was chosen: listen for that language (more accurate than guessing it from a few words).
   // English stays on auto-detect, so people can still mix languages.
   if (state.lang !== "en") overrides.transcriber = { provider: "11labs", model: "scribe_v2_realtime", language: state.lang,
