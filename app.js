@@ -347,9 +347,19 @@ async function startVapiWeb() {
   v.on("speech-end", () => setMode("listening"));
   v.on("volume-level", (l) => { state.vapiLevel = l; });
   const shown = new Set(), pending = new Map();
+  let said = ""; // the agent's words as written by its brain (the spoken-text copy can break Tamil letters)
   v.on("message", async (m) => {
-    if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) bubble(m.role === "user" ? "user" : "ai", m.transcript);
+    if (m?.type === "model-output" && typeof m.output === "string") said += m.output;
+    if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) {
+      if (m.role === "user") { said = ""; bubble("user", m.transcript); }
+      else {
+        const broken = /\uFFFD/.test(m.transcript) || (/[\u0B80-\u0BFF]/.test(m.transcript) && said.trim().length > m.transcript.length);
+        bubble("ai", broken && said.trim() ? said.trim() : m.transcript);
+        if (broken) said = "";
+      }
+    }
     if (m?.type === "tool-calls") {
+      said = "";
       for (const c of m.toolCallList || []) {
         if (shown.has(c.id)) continue; shown.add(c.id);
         let a = c.function?.arguments || {}; if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }

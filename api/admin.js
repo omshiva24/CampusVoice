@@ -16,7 +16,7 @@ Language: reply in the language the user speaks, English or Tamil. If they speak
 
 How you answer:
 1. For ANY fact about a college (fees, admission dates, eligibility, courses, cut-offs, hostel, placements, ranking, contact details, location, scholarships), ALWAYS call the college_lookup tool first. Never answer facts from memory.
-2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 30 words), then name the source briefly, like "according to their official website". Never read out all the notes, and never read the SOURCES_FOR_SCREEN part.
+2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 30 words; in Tamil, two short sentences at most), then name the source briefly, like "according to their official website". Never read out all the notes, and never read the SOURCES_FOR_SCREEN part.
 3. If the tool couldn't find it, say so honestly and suggest the official website or the admission office.
 4. This is a voice conversation: keep every reply short. No lists, no links, no web addresses, no markdown.
 5. End with a very short question like "Anything else?"
@@ -145,8 +145,10 @@ export default async function handler(req, res) {
               function: { name: "college_lookup", description: TOOL_DESCRIPTION, parameters: TOOL_PARAMS },
               server: { url: `${base}/api/ask`, timeoutSeconds: 25, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
               messages: [
-                { type: "request-start", content: "One moment, let me check that for you." },
-                { type: "request-response-delayed", content: "Still checking, almost there.", timingMilliseconds: 9000 },
+                { type: "request-start", content: "One moment, let me check that for you.", conditions: [{ param: "language", operator: "neq", value: "ta" }] },
+                { type: "request-start", content: "ஒரு நிமிடம், பார்த்துச் சொல்கிறேன்.", conditions: [{ param: "language", operator: "eq", value: "ta" }] },
+                { type: "request-response-delayed", content: "Still checking, almost there.", timingMilliseconds: 11000, conditions: [{ param: "language", operator: "neq", value: "ta" }] },
+                { type: "request-response-delayed", content: "இன்னும் கொஞ்சம் நேரம், பார்த்துக்கொண்டிருக்கிறேன்.", timingMilliseconds: 11000, conditions: [{ param: "language", operator: "eq", value: "ta" }] },
                 { type: "request-failed", content: "Sorry, I couldn't reach the college website just now. Please check their official website or ask me something else." },
               ],
             }],
@@ -156,7 +158,7 @@ export default async function handler(req, res) {
           transcriber: q.stt === "google" ? { provider: "google", model: q.sttmodel || "gemini-2.5-flash", language: "Multilingual" }
             : { provider: "11labs", model: q.sttmodel || "scribe_v2_realtime", ...(q.sttlang ? { language: q.sttlang } : {}),
                 fallbackPlan: { transcribers: [{ provider: "google", model: "gemini-2.5-flash", language: "Multilingual" }] } },
-          clientMessages: ["conversation-update", "transcript", "tool-calls", "speech-update", "status-update", "hang", "user-interrupted"],
+          clientMessages: ["conversation-update", "transcript", "tool-calls", "model-output", "speech-update", "status-update", "hang", "user-interrupted"],
           // Long answers count as "silence" for Vapi until they finish, so give the agent time to speak.
           silenceTimeoutSeconds: 60,
           maxDurationSeconds: 240,
