@@ -133,7 +133,7 @@ function bubble(kind, text, who) {
 const addSys = (t) => bubble("sys", t);
 function searching(collegeName) {
   const el = bubble("ai", "", "Agent tool · college_lookup");
-  el.classList.add("search");
+  el.classList.add("search"); el._at = Date.now();
   el.querySelector(".msg").innerHTML = `<span class="spin"></span><span></span>`;
   el.querySelector(".msg span:last-child").textContent = `Finding ${collegeName}'s official website and reading it…`;
   return el;
@@ -391,7 +391,12 @@ async function startVapiWeb() {
     }
     if (m?.type === "user-interrupted") { said = ""; live = null; }
     if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) {
-      if (m.role === "user") { heard = true; said = ""; live = null; turnLang = scriptLang(m.transcript); bubble("user", m.transcript); }
+      if (m.role === "user") {
+        heard = true; said = ""; live = null; turnLang = scriptLang(m.transcript);
+        const u = bubble("user", m.transcript), prev = u.previousElementSibling;
+        // the lookup can start before the caller's words are written down: keep the question above it
+        if (prev?.classList.contains("search") && Date.now() - (prev._at || 0) < 6000) convo.insertBefore(u, prev);
+      }
       else if (!heard) {
         // the greeting: show the exact words we gave the agent (its spoken-text copy can come back twice or mis-spelt)
         if (!greeted) { greeted = true; bubble("ai", first); }
