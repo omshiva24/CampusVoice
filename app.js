@@ -379,6 +379,8 @@ async function startVapiWeb() {
   const first = state.lang === "ta"
     ? `வணக்கம்! நான் CampusVoice. ${college()} பற்றி கட்டணம், சேர்க்கை, படிப்புகள், விடுதி என எதை வேண்டுமானாலும் கேளுங்கள்.`
     : `Hi! I'm CampusVoice. Ask me anything about ${college()}: fees, admissions, courses or hostel. You can speak in English or Tamil.`;
+  // Warm up the lookup server for this college while the agent says hello.
+  fetch("api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "warm", college: college() }) }).catch(() => {});
   await v.start(state.cfg.vapiAssistantId, { firstMessage: first, variableValues: { college_name: college() } });
   await ready;
 }

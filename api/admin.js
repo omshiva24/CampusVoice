@@ -143,7 +143,7 @@ export default async function handler(req, res) {
             tools: [{
               type: "function", async: false,
               function: { name: "college_lookup", description: TOOL_DESCRIPTION, parameters: TOOL_PARAMS },
-              server: { url: toolUrl, timeoutSeconds: 25, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
+              server: { url: `${base}/api/ask`, timeoutSeconds: 25, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
               messages: [
                 { type: "request-start", content: "One moment, let me check that for you." },
                 { type: "request-response-delayed", content: "Still checking, almost there.", timingMilliseconds: 9000 },

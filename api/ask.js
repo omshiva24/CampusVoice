@@ -1,6 +1,7 @@
 // CampusVoice AI — answer endpoint for the website (typed questions and backup voice mode)
 // © 2026 P Om Shiva. All rights reserved. See LICENSE.
 import { answerCollegeQuestion, researchCollege, notesFor, warmCollege, ipOf, limited, readJson } from "./_lib.js";
+import toolHandler from "./tool.js";
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -13,6 +14,8 @@ export default async function handler(req, res) {
     });
   }
   if (req.method !== "POST") return res.status(405).json({ error: "Use POST." });
+  // The voice agent's lookup tool is served here too, so it reuses this server's warmed-up copy of the college website.
+  if (req.headers["x-tool-secret"] || req.headers["x-vapi-secret"]) return toolHandler(req, res);
   const early = await readJson(req);
   if (early.mode === "warm") {
     if (limited(`warm:${ipOf(req)}`, 20, 10 * 60_000)) return res.status(200).json({ ok: false });
