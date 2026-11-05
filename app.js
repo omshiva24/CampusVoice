@@ -347,14 +347,22 @@ async function startVapiWeb() {
   v.on("speech-end", () => setMode("listening"));
   v.on("volume-level", (l) => { state.vapiLevel = l; });
   const shown = new Set(), pending = new Map();
-  let said = ""; // the agent's words as written by its brain (the spoken-text copy can break Tamil letters)
+  let said = "", tamilTurn = false; // said: the agent's words as written by its brain (the spoken-text copy can break Tamil letters)
   v.on("message", async (m) => {
-    if (m?.type === "model-output" && typeof m.output === "string") said += m.output;
+    if (m?.type === "model-output" && typeof m.output === "string") {
+      // a new reply starts after a pause in the stream (for example after the caller interrupts)
+      if (Date.now() - (state.lastOut || 0) > 1500) said = "";
+      said += m.output; state.lastOut = Date.now();
+    }
+    if (m?.type === "user-interrupted") said = "";
     if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) {
-      if (m.role === "user") { said = ""; bubble("user", m.transcript); }
+      if (m.role === "user") { said = ""; tamilTurn = /[\u0B80-\u0BFF]/.test(m.transcript); bubble("user", m.transcript); }
       else {
         const broken = /\uFFFD/.test(m.transcript) || (/[\u0B80-\u0BFF]/.test(m.transcript) && said.trim().length > m.transcript.length);
-        bubble("ai", broken && said.trim() ? said.trim() : m.transcript);
+        let text = broken && said.trim() ? said.trim() : m.transcript;
+        // the "please wait" lines are spoken in Tamil on Tamil turns, but their captions can arrive in English
+        if (tamilTurn && /^(one (minute|moment)|still checking)/i.test(text)) text = /^still/i.test(text) ? "இன்னும் கொஞ்சம் நேரம், பார்த்துக்கொண்டிருக்கிறேன்." : "ஒரு நிமிடம், பார்த்துச் சொல்கிறேன்.";
+        bubble("ai", text);
         if (broken) said = "";
       }
     }
