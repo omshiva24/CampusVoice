@@ -375,17 +375,23 @@ async function startVapiWeb() {
   v.on("volume-level", (l) => { state.vapiLevel = l; });
   const shown = new Set(), pending = new Map();
   let said = "", turnLang = null; // said: the agent's words as written by its brain (the spoken-text copy can break Indian letters)
-  let heard = false, greeted = false, lastAi = { text: "", at: 0 };
+  let heard = false, greeted = false, lastAi = { text: "", at: 0 }, live = null; // live: the answer bubble while it's being written
   const first = hello(college());
   v.on("message", async (m) => {
     if (m?.type === "model-output" && typeof m.output === "string") {
       // a new reply starts after a pause in the stream (for example after the caller interrupts)
       if (Date.now() - (state.lastOut || 0) > 1500) said = "";
       said += m.output; state.lastOut = Date.now();
+      // show the answer as soon as the brain writes it (the spoken copy only arrives after it has been said)
+      if (heard && said.trim()) {
+        if (!live) live = bubble("ai", said.trim());
+        else { live.querySelector(".msg").textContent = said.trim(); const sl = scriptLang(said); if (sl) live.lang = sl; }
+        convo.scrollTop = convo.scrollHeight;
+      }
     }
-    if (m?.type === "user-interrupted") said = "";
+    if (m?.type === "user-interrupted") { said = ""; live = null; }
     if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) {
-      if (m.role === "user") { heard = true; said = ""; turnLang = scriptLang(m.transcript); bubble("user", m.transcript); }
+      if (m.role === "user") { heard = true; said = ""; live = null; turnLang = scriptLang(m.transcript); bubble("user", m.transcript); }
       else if (!heard) {
         // the greeting: show the exact words we gave the agent (its spoken-text copy can come back twice or mis-spelt)
         if (!greeted) { greeted = true; bubble("ai", first); }
@@ -396,7 +402,9 @@ async function startVapiWeb() {
         if (turnLang && /^(one (minute|moment)|still checking|just a moment)/i.test(text)) text = /^still/i.test(text) ? t("still", turnLang) : t("wait", turnLang);
         if (text === lastAi.text && Date.now() - lastAi.at < 8000) return; // the same line sent twice
         lastAi = { text, at: Date.now() };
-        bubble("ai", text);
+        const isWait = Object.values(TEXT.wait).concat(Object.values(TEXT.still)).includes(text);
+        if (live && !isWait) { live.querySelector(".msg").textContent = broken || !said.trim() ? text : said.trim(); live = null; }
+        else bubble("ai", text);
         if (broken) said = "";
       }
     }
