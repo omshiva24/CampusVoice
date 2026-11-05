@@ -338,6 +338,7 @@ export function notesFor(r, { max = Infinity, lang } = {}) {
   }
   if (r.docs.length) lines.push(`Documents on the official website: ${r.docs.map((d) => `"${d.title}" (PDF)`).join("; ")}.`);
   lines.push("Answer ONLY from these notes, briefly, and mention the source. If the exact answer isn't here, say so honestly and suggest the official website or admission office (mention a matching PDF document if one is listed). Information may be from an earlier year: say which year if the notes show it.");
+  if (Number.isFinite(max)) lines.push("This is a phone-style voice reply: say only the direct answer in one or two short sentences (about 25 words), then ask \"Anything else?\".");
   if (lang === "ta") lines.push("The user is speaking Tamil: reply in simple spoken Tamil, in Tamil script.");
   return lines.join("\n");
 }
