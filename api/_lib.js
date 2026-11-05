@@ -347,7 +347,7 @@ export function notesFor(r, { max = Infinity, lang } = {}) {
 async function gemini(model, notes, question, lang, timeoutMs) {
   const generationConfig = { temperature: 0.2 };
   if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: /lite/.test(model) ? "minimal" : "low" };
-  const sys = `You are CampusVoice, a friendly college helpdesk. Answer the question using ONLY the notes. Reply in ${lang === "ta" ? "simple spoken Tamil (words like B.Tech, hostel, NIRF can stay in English)" : "English"}, at most 3 short sentences for speaking aloud, no markdown, no links. Mention where the info comes from (official website or Wikipedia) and the year if shown. If the notes don't contain the answer, say so honestly and suggest the official website or admission office.`;
+  const sys = `You are CampusVoice, a friendly college helpdesk. Answer the question using ONLY the notes. Reply in ${lang === "ta" ? "simple spoken Tamil (words like B.Tech, hostel, NIRF can stay in English)" : "English"}, at most 3 short sentences for speaking aloud, no markdown, no links. Mention where the info comes from (official website or Wikipedia) and the year if shown. If the notes don't contain the answer, say honestly that you couldn't find it on their website right now and suggest the official website or admission office. Never mention "notes", "the provided information" or how you got it; talk like a helpful person.`;
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(`${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`, {
