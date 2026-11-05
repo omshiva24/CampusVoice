@@ -26,7 +26,7 @@ Wrong or missing information costs real seats and real money. So I built a helpd
 - **Any college:** type any college name. The agent finds its official website and reads the pages that match your question.
 - **Grounded answers with sources:** the agent answers only from what it read and shows the source pages, so you can check.
 - **Phone line:** the same agent picks up real phone calls (Vapi), and can be tried in the browser too.
-- **Never goes silent:** if the premium voice minutes run out, the site switches to a free backup voice that uses the browser's own speech tools.
+- **Never goes silent:** three voices in a row. If ElevenLabs can't start, the site uses the same agent on Vapi; if Vapi's credit is used up, it switches to a free voice (the browser's own listening, and the device voice or a free Gemini voice for speaking, which also covers Tamil). Typing always works too.
 - **Accessible:** big touch targets, keyboard support, screen-reader labels, reduced-motion support and a Tamil font.
 
 ## How it works
@@ -35,6 +35,7 @@ Wrong or missing information costs real seats and real money. So I built a helpd
 You speak (English / Tamil)
   ├─ Website ──► ElevenLabs Agent: speech-to-text → language model → text-to-speech
   │                 └─ tool: college_lookup (runs in the page so you see the search and sources)
+  ├─ Backup  ──► the same Vapi assistant in the browser, then a free browser voice
   └─ Phone   ──► Vapi assistant (same prompt, same tool through a server webhook)
                     │
 college_lookup ──► Vercel Function (api/_lib.js)
@@ -45,7 +46,7 @@ college_lookup ──► Vercel Function (api/_lib.js)
 ```
 
 - **Front end:** plain HTML, CSS and JavaScript. The voice "orb" is drawn live on a canvas and reacts to your voice and the agent's voice.
-- **Back end:** small Vercel Functions: `api/ask.js` (research for the site), `api/tool.js` (webhook for the phone agent), `api/session.js` (short-lived signed link for each voice conversation) and `api/config.js`.
+- **Back end:** small Vercel Functions: `api/ask.js` (research for the site, and the voice agent's lookup tool so both share one warmed-up copy of the college website), `api/tool.js` (the tool webhook), `api/speak.js` (free Gemini voice when a device has no voice for the language), `api/session.js` (short-lived signed link for each voice conversation) and `api/config.js`.
 - **Security:** every API key stays on the server as a secret setting. The browser only gets a one-time signed link. Tool calls from the phone agent need a secret header, and every endpoint has a per-visitor rate limit.
 
 ## Tech stack
