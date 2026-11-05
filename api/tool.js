@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     const results = await Promise.all(calls.map(async (c) => {
       const out = await lookup(c.function?.arguments ?? c.arguments);
       // Vapi needs the result as ONE line of text (line breaks make the agent ignore it).
-      return { toolCallId: c.id, result: out.text.replace(/\s*\n\s*/g, " • ").replace(/\s+/g, " ").slice(0, 2000) };
+      return { toolCallId: c.id, result: out.text.replace(/\s*\n\s*/g, " • ").replace(/\s+/g, " ").slice(0, 1500) };
     }));
     return res.status(200).json({ results });
   }

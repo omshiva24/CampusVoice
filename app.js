@@ -381,21 +381,33 @@ function listenOnce() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const rec = new SR(); state.rec = rec;
   rec.lang = state.lang === "ta" ? "ta-IN" : "en-IN"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-  let live = null, finalText = "";
+  let live = null, finalText = "", failed = false;
   rec.onstart = () => setMode("listening");
   rec.onresult = (ev) => {
     let text = ""; for (const r of ev.results) text += r[0].transcript;
     if (!live) live = bubble("user", text); else live.querySelector(".msg").textContent = text;
     if (ev.results[ev.results.length - 1].isFinal) finalText = text.trim();
   };
-  rec.onerror = (e) => { if (e.error === "not-allowed") { addSys("Microphone is blocked. Allow it in the browser, or type below."); stop(); } };
+  rec.onerror = (e) => {
+    if (e.error === "no-speech" || e.error === "aborted") return;
+    failed = true;
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") addSys("Microphone is blocked. Allow it in the browser, or type your question below.");
+    else addSys("Voice input isn't working in this browser right now. Type your question below and I'll still answer out loud.");
+    stop();
+  };
   rec.onend = async () => {
-    if (!state.active || state.engine !== "backup") return;
-    if (!finalText) { live?.remove(); return listenOnce(); }
+    if (!state.active || state.engine !== "backup" || failed) return;
+    if (!finalText) {
+      live?.remove();
+      state.quiet = (state.quiet || 0) + 1;
+      if (state.quiet >= 3) { state.quiet = 0; addSys("I didn't hear anything. Tap the mic when you're ready, or type below."); return stop(); }
+      return setTimeout(listenOnce, 250);
+    }
+    state.quiet = 0;
     await answerAndSpeak(finalText, { bubbleShown: true });
     listenOnce();
   };
-  try { rec.start(); } catch { setTimeout(listenOnce, 400); }
+  try { rec.start(); } catch { setTimeout(listenOnce, 600); }
 }
 async function answerAndSpeak(question, { bubbleShown = false } = {}) {
   if (!bubbleShown) bubble("user", question);

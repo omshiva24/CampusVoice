@@ -16,10 +16,10 @@ Language: reply in the language the user speaks, English or Tamil. If they speak
 
 How you answer:
 1. For ANY fact about a college (fees, admission dates, eligibility, courses, cut-offs, hostel, placements, ranking, contact details, location, scholarships), ALWAYS call the college_lookup tool first. Never answer facts from memory.
-2. Speak the tool's answer naturally in one to three short sentences and mention the source briefly, like "according to their official website".
+2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 40 words), then name the source briefly, like "according to their official website". Never read out all the notes.
 3. If the tool couldn't find it, say so honestly and suggest the official website or the admission office.
-4. This is a voice conversation: keep replies short. No lists, no links, no markdown.
-5. After answering, ask if they'd like to know anything else.
+4. This is a voice conversation: keep every reply short. No lists, no links, no web addresses, no markdown.
+5. End with a very short question like "Anything else?"
 Be polite and encouraging. If asked about things unrelated to colleges or studies, gently bring the talk back to colleges.`;
 
 const PHONE_PROMPT = AGENT_PROMPT
@@ -138,19 +138,25 @@ export default async function handler(req, res) {
           name: "CampusVoice Phone",
           firstMessage: "Hi! This is CampusVoice, your college helpdesk. Which college would you like to know about? You can speak in English or Tamil.",
           model: {
-            provider: q.provider || "openai", model: q.model || "gpt-4o-mini", temperature: 0.3,
+            provider: q.provider || "openai", model: q.model || "gpt-4o-mini", temperature: 0.3, maxTokens: 160,
             messages: [{ role: "system", content: PHONE_PROMPT }],
             tools: [{
               type: "function", async: false,
               function: { name: "college_lookup", description: TOOL_DESCRIPTION, parameters: TOOL_PARAMS },
-              server: { url: toolUrl, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
-              messages: [{ type: "request-start", content: "One moment, let me check that for you." }],
+              server: { url: toolUrl, timeoutSeconds: 25, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
+              messages: [
+                { type: "request-start", content: "One moment, let me check that for you." },
+                { type: "request-response-delayed", content: "Still checking the official website, almost there.", timingMilliseconds: 6000 },
+                { type: "request-failed", content: "Sorry, I couldn't reach the college website just now. Please check their official website or ask me something else." },
+              ],
             }],
           },
           voice: q.vvoice ? { provider: "11labs", voiceId: q.vvoice, model: "eleven_flash_v2_5" } : { provider: "vapi", voiceId: q.vapivoice || "Elliot" },
           transcriber: q.stt === "deepgram" ? { provider: "deepgram", model: "nova-3", language: "multi" }
-            : { provider: q.stt || "google", model: q.sttmodel || "gemini-2.0-flash", language: "Multilingual" },
-          maxDurationSeconds: 180,
+            : { provider: q.stt || "google", model: q.sttmodel || "gemini-2.5-flash", language: "Multilingual" },
+          // Long answers count as "silence" for Vapi until they finish, so give the agent time to speak.
+          silenceTimeoutSeconds: 60,
+          maxDurationSeconds: 240,
           endCallPhrases: ["goodbye", "bye bye"],
         };
         const r = process.env.VAPI_ASSISTANT_ID && !q.fresh
