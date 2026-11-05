@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CampusVoice AI — ask any college, out loud</title>
-<meta name="description" content="A voice agent that answers questions about any college — fees, admissions, courses, hostel — in English or Tamil, on the web or a phone call. Built by P Om Shiva.">
+<meta name="description" content="A voice agent that answers questions about any college — fees, admissions, courses, hostel — in English, Hindi, Tamil, Telugu or Malayalam, on the web or a phone call. Built by P Om Shiva.">
 <meta name="author" content="P Om Shiva, M.Tech CSE (2nd year), Pondicherry University">
 <meta name="theme-color" content="#050B1F">
 <meta property="og:title" content="CampusVoice AI — ask any college, out loud">
-<meta property="og:description" content="Talk to an AI agent about any college in English or Tamil. It searches official sources live and answers by voice.">
+<meta property="og:description" content="Talk to an AI agent about any college in English, Hindi, Tamil, Telugu or Malayalam. It searches official sources live and answers by voice.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -30,9 +30,9 @@
 <main>
   <section class="hero">
     <div class="intro">
-      <p class="kicker"><span class="dot"></span> AI voice agent · English + தமிழ்</p>
+      <p class="kicker"><span class="dot"></span> AI voice agent · 5 languages</p>
       <h1>Ask any college.<br><span class="grad">Out loud.</span></h1>
-      <p class="sub">Fees, admissions, courses, hostel, placements. CampusVoice searches the college's official sources <em>live</em> and answers you by voice, in English or Tamil.</p>
+      <p class="sub">Fees, admissions, courses, hostel, placements. CampusVoice searches the college's official sources <em>live</em> and answers you by voice, in English, हिन्दी, தமிழ், తెలుగు or മലയാളം.</p>
 
       <div class="field">
         <label for="college">Which college?</label>
@@ -49,7 +49,10 @@
         <span class="label" id="lang-label">Language</span>
         <div class="seg" role="radiogroup" aria-labelledby="lang-label">
           <button type="button" role="radio" aria-checked="true" data-lang="en">English</button>
+          <button type="button" role="radio" aria-checked="false" data-lang="hi" lang="hi">हिन्दी</button>
           <button type="button" role="radio" aria-checked="false" data-lang="ta" lang="ta">தமிழ்</button>
+          <button type="button" role="radio" aria-checked="false" data-lang="te" lang="te">తెలుగు</button>
+          <button type="button" role="radio" aria-checked="false" data-lang="ml" lang="ml">മലയാളം</button>
         </div>
       </div>
     </div>
@@ -106,7 +109,7 @@
     <p class="kicker">How it works</p>
     <h2>Four steps, about three seconds</h2>
     <ol class="steps">
-      <li><span class="n">1</span><h3>You speak</h3><p>In English or Tamil, on the website or a phone call.</p></li>
+      <li><span class="n">1</span><h3>You speak</h3><p>In English, Hindi, Tamil, Telugu or Malayalam, on the website or a phone call.</p></li>
       <li><span class="n">2</span><h3>It listens</h3><p>ElevenLabs turns your voice into text and detects your language.</p></li>
       <li><span class="n">3</span><h3>It searches</h3><p>The agent looks up the college's official sources live, using Google Search through Gemini, so it works for any college.</p></li>
       <li><span class="n">4</span><h3>It answers</h3><p>ElevenLabs speaks the answer in a natural voice and shows the sources.</p></li>
@@ -118,7 +121,7 @@
     <div class="why-text">
       <p class="kicker">Why I built this</p>
       <h2>Every student deserves an answer.</h2>
-      <p>During admissions, college offices are flooded with calls. Phones ring unanswered, websites are confusing and mostly in English. A first-generation student, or a parent who speaks only Tamil, often can't get a simple answer: <em>"What's the fee? Is there a hostel? When's the last date?"</em></p>
+      <p>During admissions, college offices are flooded with calls. Phones ring unanswered, websites are confusing and mostly in English. A first-generation student, or a parent who speaks only Tamil, Hindi, Telugu or Malayalam, often can't get a simple answer: <em>"What's the fee? Is there a hostel? When's the last date?"</em></p>
       <p>Wrong or missing information costs real seats and real money. So I built a helpdesk that never sleeps, never gets tired of questions and speaks your language. It works for any college, on a website or a simple phone call.</p>
       <p class="strong">No student should miss an opportunity just because nobody picked up the phone.</p>
     </div>

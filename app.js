@@ -4,6 +4,7 @@
 // Premium voice: ElevenLabs Agents (speech-to-text, the agent's brain and natural speech) with a
 // "college_lookup" tool that this page runs. Backup voice (free, no minutes): the browser's own
 // speech recognition and speech synthesis. Phone: a Vapi voice agent that uses the same lookup.
+// Languages: English, Hindi, Tamil, Telugu and Malayalam.
 
 const EL_SDK = "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.32.1/+esm";
 const VAPI_SDK = "https://cdn.jsdelivr.net/npm/@vapi-ai/web@3.0.1/+esm";
@@ -14,17 +15,43 @@ const COLLEGES = [
   "Madras Christian College", "Loyola College, Chennai", "BITS Pilani", "IIT Bombay", "Jawaharlal Nehru University",
   "Christ University, Bangalore", "Manipal Institute of Technology", "Stanford University", "University of Oxford", "University of Tokyo",
 ];
+// The five languages. "re" finds the language from the letters someone typed or said.
+const LANGS = {
+  en: { bcp: "en-IN", voices: ["en-IN", "en-GB", "en-US", "en"] },
+  hi: { bcp: "hi-IN", voices: ["hi-IN", "hi"], re: /[\u0900-\u097F]/ },
+  ta: { bcp: "ta-IN", voices: ["ta-IN", "ta"], re: /[\u0B80-\u0BFF]/ },
+  te: { bcp: "te-IN", voices: ["te-IN", "te"], re: /[\u0C00-\u0C7F]/ },
+  ml: { bcp: "ml-IN", voices: ["ml-IN", "ml"], re: /[\u0D00-\u0D7F]/ },
+};
+const scriptLang = (t) => Object.keys(LANGS).find((k) => LANGS[k].re?.test(t || "")) || null;
 const QUESTIONS = {
   en: ["What is the fee for B.Tech CSE?", "When do admissions open?", "Is there a hostel? What's the fee?", "What is the NIRF rank?", "How are the placements?", "How do I contact the admission office?"],
+  hi: ["B.Tech CSE की फीस कितनी है?", "एडमिशन कब शुरू होंगे?", "क्या हॉस्टल है? फीस कितनी है?", "NIRF रैंक क्या है?", "प्लेसमेंट कैसे हैं?", "एडमिशन ऑफिस से कैसे संपर्क करें?"],
   ta: ["B.Tech CSE கட்டணம் எவ்வளவு?", "சேர்க்கை எப்போது தொடங்கும்?", "விடுதி வசதி உள்ளதா? கட்டணம் என்ன?", "NIRF தரவரிசை என்ன?", "வேலைவாய்ப்பு (placement) எப்படி?", "சேர்க்கை அலுவலகத்தை எப்படி தொடர்பு கொள்வது?"],
+  te: ["B.Tech CSE ఫీజు ఎంత?", "అడ్మిషన్లు ఎప్పుడు మొదలవుతాయి?", "హాస్టల్ ఉందా? ఫీజు ఎంత?", "NIRF ర్యాంక్ ఎంత?", "ప్లేస్‌మెంట్స్ ఎలా ఉన్నాయి?", "అడ్మిషన్ ఆఫీస్‌ను ఎలా సంప్రదించాలి?"],
+  ml: ["B.Tech CSE ഫീസ് എത്രയാണ്?", "അഡ്മിഷൻ എപ്പോൾ തുടങ്ങും?", "ഹോസ്റ്റൽ ഉണ്ടോ? ഫീസ് എത്ര?", "NIRF റാങ്ക് എത്രയാണ്?", "പ്ലേസ്‌മെന്റ് എങ്ങനെയാണ്?", "അഡ്മിഷൻ ഓഫീസുമായി എങ്ങനെ ബന്ധപ്പെടാം?"],
 };
 const TEXT = {
-  idle: { en: "Tap the mic and ask", ta: "மைக்கைத் தட்டி கேளுங்கள்" },
-  connecting: { en: "Connecting…", ta: "இணைக்கிறது…" },
-  listening: { en: "Listening…", ta: "கேட்கிறேன்…" },
-  thinking: { en: "Reading official sources…", ta: "அதிகாரப்பூர்வ தகவல்களைப் படிக்கிறேன்…" },
-  speaking: { en: "Speaking…", ta: "பேசுகிறேன்…" },
+  idle: { en: "Tap the mic and ask", hi: "माइक दबाएँ और पूछें", ta: "மைக்கைத் தட்டி கேளுங்கள்", te: "మైక్ నొక్కి అడగండి", ml: "മൈക്ക് അമർത്തി ചോദിക്കൂ" },
+  connecting: { en: "Connecting…", hi: "जुड़ रहा है…", ta: "இணைக்கிறது…", te: "కనెక్ట్ అవుతోంది…", ml: "കണക്റ്റ് ചെയ്യുന്നു…" },
+  listening: { en: "Listening…", hi: "सुन रही हूँ…", ta: "கேட்கிறேன்…", te: "వింటున్నాను…", ml: "കേൾക്കുന്നു…" },
+  thinking: { en: "Reading official sources…", hi: "आधिकारिक जानकारी पढ़ रही हूँ…", ta: "அதிகாரப்பூர்வ தகவல்களைப் படிக்கிறேன்…", te: "అధికారిక సమాచారం చదువుతున్నాను…", ml: "ഔദ്യോഗിക വിവരങ്ങൾ വായിക്കുന്നു…" },
+  speaking: { en: "Speaking…", hi: "बोल रही हूँ…", ta: "பேசுகிறேன்…", te: "మాట్లాడుతున్నాను…", ml: "സംസാരിക്കുന്നു…" },
+  switch: { en: "Language will switch on the next conversation. You can just start speaking it now.", hi: "भाषा अगली बातचीत में बदलेगी। आप अभी भी हिंदी में बोल सकते हैं।", ta: "மொழி அடுத்த உரையாடலில் மாறும். இப்போதும் தமிழில் பேசலாம்.", te: "భాష తదుపరి సంభాషణలో మారుతుంది. ఇప్పుడే తెలుగులో మాట్లాడవచ్చు.", ml: "ഭാഷ അടുത്ത സംഭാഷണത്തിൽ മാറും. ഇപ്പോൾ തന്നെ മലയാളത്തിൽ സംസാരിക്കാം." },
+  novoice: { en: "Voice playback isn't available here, so the answer is shown as text.", hi: "इस डिवाइस पर आवाज़ उपलब्ध नहीं है, इसलिए जवाब लिखकर दिखाया गया है।", ta: "இந்த சாதனத்தில் தமிழ் குரல் இல்லை, அதனால் பதில் எழுத்தாகக் காட்டப்படுகிறது.", te: "ఈ పరికరంలో వాయిస్ అందుబాటులో లేదు, అందుకే సమాధానం రాతగా చూపిస్తున్నాము.", ml: "ഈ ഉപകരണത്തിൽ ശബ്ദം ലഭ്യമല്ല, അതിനാൽ മറുപടി എഴുത്തായി കാണിക്കുന്നു." },
+  // the agent's "please wait" lines, as it speaks them in each language
+  wait: { en: "One moment, let me check that for you.", hi: "एक पल, मैं देखकर बताती हूँ।", ta: "ஒரு நிமிடம், பார்த்துச் சொல்கிறேன்.", te: "ఒక్క క్షణం, చూసి చెబుతాను.", ml: "ഒരു നിമിഷം, നോക്കി പറയാം." },
+  still: { en: "Still checking, almost there.", hi: "बस थोड़ा और, अभी देख रही हूँ।", ta: "இன்னும் கொஞ்சம் நேரம், பார்த்துக்கொண்டிருக்கிறேன்.", te: "ఇంకా చూస్తున్నాను, ఇంకొంచెం సేపు.", ml: "ഇനിയും നോക്കുന്നു, കുറച്ചു കൂടി." },
 };
+const t = (key, lang = state.lang) => TEXT[key]?.[lang] || TEXT[key]?.en || "";
+// first words of the voice agent / free voice, in the chosen language
+const hello = (c, lang = state.lang) => ({
+  en: `Hi! I'm CampusVoice. Ask me anything about ${c}, in your language.`,
+  hi: `नमस्ते! मैं CampusVoice हूँ। ${c} के बारे में कुछ भी पूछिए।`,
+  ta: `வணக்கம்! நான் CampusVoice. ${c} பற்றி எதையும் கேளுங்கள்.`,
+  te: `నమస్కారం! నేను CampusVoice. ${c} గురించి ఏదైనా అడగండి.`,
+  ml: `നമസ്കാരം! ഞാൻ CampusVoice ആണ്. ${c} നെക്കുറിച്ച് എന്തും ചോദിക്കൂ.`,
+}[lang] || `Hi! I'm CampusVoice. Ask me anything about ${c}.`);
 
 const $ = (s) => document.querySelector(s);
 const state = { lang: "en", mode: "idle", engine: null, conv: null, rec: null, active: false, t0: 0, level: 0, analyser: null, stream: null, cfg: {}, speakPulse: 0 };
@@ -62,14 +89,14 @@ document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("clic
   document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
   renderQuick();
   if (state.mode === "idle") setMode("idle");
-  if (state.active) addSys(state.lang === "ta" ? "மொழி அடுத்த உரையாடலில் மாறும். இப்போதும் தமிழில் பேசலாம்." : "Language will switch on the next conversation. You can just start speaking it now.");
+  if (state.active) addSys(t("switch"));
 }));
 
 function renderQuick() {
   const box = $("#quick"); box.innerHTML = "";
   QUESTIONS[state.lang].forEach((q) => {
     const b = document.createElement("button"); b.type = "button"; b.textContent = q;
-    if (state.lang === "ta") b.lang = "ta";
+    if (state.lang !== "en") b.lang = state.lang;
     b.addEventListener("click", () => askTyped(q));
     box.appendChild(b);
   });
@@ -98,7 +125,7 @@ function bubble(kind, text, who) {
   el.classList.add(kind);
   el.querySelector(".who").textContent = who || (kind === "user" ? "You" : kind === "ai" ? "CampusVoice" : "");
   el.querySelector(".msg").textContent = text;
-  if (/[஀-௿]/.test(text)) el.lang = "ta";
+  const sl = scriptLang(text); if (sl) el.lang = sl;
   convo.appendChild(el);
   convo.scrollTop = convo.scrollHeight;
   return el;
@@ -133,7 +160,7 @@ async function ask(question, collegeName, lang, mode) {
 // The tool the voice agent calls. It runs here so you can see the search and the sources live.
 async function collegeLookup(params = {}) {
   const c = params.college || college();
-  const lang = params.language === "ta" ? "ta" : params.language === "en" ? "en" : state.lang;
+  const lang = LANGS[params.language] ? params.language : state.lang;
   setMode("thinking");
   const el = searching(c);
   try {
@@ -149,7 +176,7 @@ async function collegeLookup(params = {}) {
 // ---------- modes, timer, orb ----------
 function setMode(m) {
   state.mode = m;
-  $("#state").textContent = TEXT[m]?.[state.lang] || "";
+  $("#state").textContent = t(m);
   $("#state").lang = state.lang;
 }
 let timerId = 0;
@@ -288,7 +315,7 @@ async function startEleven(signedUrl) {
   const conv = await Conversation.startSession({
     signedUrl,
     dynamicVariables: { college_name: college() },
-    overrides: state.lang === "ta" ? { agent: { language: "ta" } } : undefined,
+    overrides: state.lang !== "en" ? { agent: { language: state.lang } } : undefined,
     clientTools: { college_lookup: collegeLookup },
     onConnect: () => { connected = true; setLive(true); startTimer(); setMode("listening"); },
     onDisconnect: (d) => { if (!connected) { earlyClose?.(new Error(d?.message || d?.reason || "closed before connecting")); return; } if (state.engine === "eleven") stop(); },
@@ -347,7 +374,7 @@ async function startVapiWeb() {
   v.on("speech-end", () => setMode("listening"));
   v.on("volume-level", (l) => { state.vapiLevel = l; });
   const shown = new Set(), pending = new Map();
-  let said = "", tamilTurn = false; // said: the agent's words as written by its brain (the spoken-text copy can break Tamil letters)
+  let said = "", turnLang = null; // said: the agent's words as written by its brain (the spoken-text copy can break Tamil letters)
   v.on("message", async (m) => {
     if (m?.type === "model-output" && typeof m.output === "string") {
       // a new reply starts after a pause in the stream (for example after the caller interrupts)
@@ -356,12 +383,12 @@ async function startVapiWeb() {
     }
     if (m?.type === "user-interrupted") said = "";
     if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) {
-      if (m.role === "user") { said = ""; tamilTurn = /[\u0B80-\u0BFF]/.test(m.transcript); bubble("user", m.transcript); }
+      if (m.role === "user") { said = ""; turnLang = scriptLang(m.transcript); bubble("user", m.transcript); }
       else {
-        const broken = /\uFFFD/.test(m.transcript) || (/[\u0B80-\u0BFF]/.test(m.transcript) && said.trim().length > m.transcript.length);
+        const broken = /\uFFFD/.test(m.transcript) || (scriptLang(m.transcript) && said.trim().length > m.transcript.length);
         let text = broken && said.trim() ? said.trim() : m.transcript;
-        // the "please wait" lines are spoken in Tamil on Tamil turns, but their captions can arrive in English
-        if (tamilTurn && /^(one (minute|moment)|still checking)/i.test(text)) text = /^still/i.test(text) ? "இன்னும் கொஞ்சம் நேரம், பார்த்துக்கொண்டிருக்கிறேன்." : "ஒரு நிமிடம், பார்த்துச் சொல்கிறேன்.";
+        // the "please wait" lines are spoken in the caller's language, but their captions can arrive in English
+        if (turnLang && /^(one (minute|moment)|still checking|just a moment)/i.test(text)) text = /^still/i.test(text) ? t("still", turnLang) : t("wait", turnLang);
         bubble("ai", text);
         if (broken) said = "";
       }
@@ -394,12 +421,15 @@ async function startVapiWeb() {
       }
     }
   });
-  const first = state.lang === "ta"
-    ? `வணக்கம்! நான் CampusVoice. ${college()} பற்றி எதையும் கேளுங்கள், தமிழிலோ ஆங்கிலத்திலோ.`
-    : `Hi! I'm CampusVoice. Ask me anything about ${college()}, in English or Tamil.`;
+  const first = hello(college());
   // Warm up the lookup server for this college while the agent says hello.
   fetch("api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "warm", college: college() }) }).catch(() => {});
-  await v.start(state.cfg.vapiAssistantId, { firstMessage: first, variableValues: { college_name: college() } });
+  const overrides = { firstMessage: first, variableValues: { college_name: college() } };
+  // A language was chosen: listen for that language (more accurate than guessing it from a few words).
+  // English stays on auto-detect, so people can still mix languages.
+  if (state.lang !== "en") overrides.transcriber = { provider: "11labs", model: "scribe_v2_realtime", language: state.lang,
+    fallbackPlan: { transcribers: [{ provider: "google", model: "gemini-2.5-flash", language: "Multilingual" }] } };
+  await v.start(state.cfg.vapiAssistantId, overrides);
   await ready;
 }
 
@@ -421,15 +451,15 @@ async function startBackup() {
     addSys("Please allow the microphone to talk, or type your question below."); setMode("idle"); return;
   }
   setLive(true); startTimer();
-  bubble("ai", state.lang === "ta" ? `வணக்கம்! ${college()} பற்றி என்ன தெரிந்துகொள்ள வேண்டும்?` : `Hi! What would you like to know about ${college()}?`);
-  await speak(state.lang === "ta" ? `வணக்கம்! ${college()} பற்றி என்ன தெரிந்துகொள்ள வேண்டும்?` : `Hi! What would you like to know about ${college()}?`, state.lang);
+  bubble("ai", hello(college()));
+  await speak(hello(college()), state.lang);
   listenOnce();
 }
 function listenOnce() {
   if (!state.active || state.engine !== "backup") return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const rec = new SR(); state.rec = rec;
-  rec.lang = state.lang === "ta" ? "ta-IN" : "en-IN"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  rec.lang = LANGS[state.lang].bcp; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
   let live = null, finalText = "", failed = false;
   rec.onstart = () => setMode("listening");
   rec.onresult = (ev) => {
@@ -460,7 +490,7 @@ function listenOnce() {
 }
 async function answerAndSpeak(question, { bubbleShown = false } = {}) {
   if (!bubbleShown) bubble("user", question);
-  const c = college(), lang = /[஀-௿]/.test(question) ? "ta" : state.lang;
+  const c = college(), lang = scriptLang(question) || state.lang;
   setMode("thinking");
   const el = searching(c);
   try {
@@ -475,7 +505,7 @@ async function answerAndSpeak(question, { bubbleShown = false } = {}) {
 }
 function pickVoice(lang) {
   const vs = speechSynthesis.getVoices();
-  const want = lang === "ta" ? ["ta-IN", "ta"] : ["en-IN", "en-GB", "en-US", "en"];
+  const want = (LANGS[lang] || LANGS.en).voices;
   for (const w of want) { const v = vs.find((x) => x.lang?.toLowerCase().startsWith(w.toLowerCase())); if (v) return v; }
   return null;
 }
@@ -491,7 +521,7 @@ function speak(text, lang) {
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   });
 }
-// No voice on this device for the language (often Tamil on computers): use a natural AI voice from the server.
+// No voice on this device for the language (often Tamil, Telugu or Malayalam on computers): use a natural AI voice from the server.
 let audioCtx = null;
 async function speakServer(text, lang) {
   try {
@@ -508,7 +538,7 @@ async function speakServer(text, lang) {
     await new Promise((done) => { audio.onplay = () => setMode("speaking"); audio.onended = audio.onerror = done; audio.play().catch(done); });
     state.outAnalyser = null; URL.revokeObjectURL(url);
   } catch {
-    addSys(lang === "ta" ? "இந்த சாதனத்தில் தமிழ் குரல் இல்லை, அதனால் பதில் எழுத்தாகக் காட்டப்படுகிறது." : "Voice playback isn't available here, so the answer is shown as text.");
+    addSys(t("novoice", lang));
   }
 }
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
@@ -534,7 +564,7 @@ let vapi = null, inCall = false, callT0 = 0, callTimer = 0;
 const callBtn = $("#call-btn"), callState = $("#call-state"), callLog = $("#call-log");
 function logCall(role, text) {
   const p = document.createElement("p"); p.innerHTML = `<b>${role === "user" ? "YOU" : "AGENT"}</b>`; p.append(text);
-  if (/[஀-௿]/.test(text)) p.lang = "ta";
+  const sl = scriptLang(text); if (sl) p.lang = sl;
   callLog.appendChild(p); callLog.scrollTop = callLog.scrollHeight;
 }
 callBtn.addEventListener("click", async () => {

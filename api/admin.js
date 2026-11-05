@@ -12,11 +12,11 @@ export const AGENT_PROMPT = `You are CampusVoice, a warm, upbeat voice helpdesk 
 
 The college the user picked on the website is: {{college_name}}. If the user asks about a different college, use that one instead.
 
-Language: reply in the language the user speaks, English or Tamil. If they speak Tamil, reply in simple, natural spoken Tamil written in Tamil script (words like B.Tech, hostel or NIRF can stay in English). Callers only speak English or Tamil: if their words arrive in another Indian script (Telugu, Kannada, Malayalam or Hindi letters) or as Tamil words written in English letters (like "viduthi kattanam evvalavu"), they were speaking Tamil, so understand it as Tamil and reply in Tamil.
+Language: you speak English, Hindi, Tamil, Telugu and Malayalam. Always reply in the language the user is speaking, in simple, natural spoken words, written in that language's own script (Devanagari for Hindi, Tamil script for Tamil, Telugu script for Telugu, Malayalam script for Malayalam). Words like B.Tech, hostel, fees or NIRF can stay in English. If their words arrive in English letters but are really an Indian language (like "fees kitni hai" or "viduthi kattanam evvalavu"), reply in that language, in its own script. If they switch language, switch with them.
 
 How you answer:
 1. For ANY fact about a college (fees, admission dates, eligibility, courses, cut-offs, hostel, placements, ranking, contact details, location, scholarships), ALWAYS call the college_lookup tool first. Never answer facts from memory.
-2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 30 words; in Tamil, two short sentences at most), then name the source briefly, like "according to their official website". Never read out all the notes, and never read the SOURCES_FOR_SCREEN part.
+2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 30 words in English; in other languages, two short sentences at most), then name the source briefly, like "according to their official website". Never read out all the notes, and never read the SOURCES_FOR_SCREEN part.
 3. If the tool couldn't find it, say so honestly and suggest the official website or the admission office.
 4. This is a voice conversation: keep every reply short. No lists, no links, no web addresses, no markdown.
 5. End with a very short question like "Anything else?"
@@ -26,13 +26,28 @@ const PHONE_PROMPT = AGENT_PROMPT
   .replace("The college the user picked on the website is: {{college_name}}. If the user asks about a different college, use that one instead.",
     "At the start, find out which college the caller wants to know about. Remember it for the rest of the call.");
 
+// What the agent says while the lookup runs, in the caller's language.
+const WAIT = {
+  en: ["One moment, let me check that for you.", "Still checking, almost there."],
+  hi: ["एक पल, मैं देखकर बताती हूँ।", "बस थोड़ा और, अभी देख रही हूँ।"],
+  ta: ["ஒரு நிமிடம், பார்த்துச் சொல்கிறேன்.", "இன்னும் கொஞ்சம் நேரம், பார்த்துக்கொண்டிருக்கிறேன்."],
+  te: ["ఒక్క క్షణం, చూసి చెబుతాను.", "ఇంకా చూస్తున్నాను, ఇంకొంచెం సేపు."],
+  ml: ["ഒരു നിമിഷം, നോക്കി പറയാം.", "ഇനിയും നോക്കുന്നു, കുറച്ചു കൂടി."],
+};
+const waitMessages = () => Object.entries(WAIT).flatMap(([lang, [start, still]]) => [
+  { type: "request-start", content: start, conditions: [{ param: "language", operator: "eq", value: lang }] },
+  { type: "request-response-delayed", content: still, timingMilliseconds: 11000, conditions: [{ param: "language", operator: "eq", value: lang }] },
+]);
+// Voice model for the agents: Flash v2.5 is fastest but has no Telugu or Malayalam; Eleven v3-family models speak all five.
+const VAPI_VOICE_MODEL = "eleven_v4_turbo";
+
 const TOOL_DESCRIPTION = "Looks up live, up-to-date information about any college or university on the web (official websites first) and returns a short answer with source names. Use it for every factual question about a college.";
 const TOOL_PARAMS = {
   type: "object",
   properties: {
     college: { type: "string", description: "Full name of the college or university, e.g. 'Pondicherry University' or 'IIT Madras'." },
     question: { type: "string", description: "The user's question, rewritten in English, short and specific." },
-    language: { type: "string", enum: ["en", "ta"], description: "Language to answer in: 'en' for English or 'ta' for Tamil (the language the user is speaking)." },
+    language: { type: "string", enum: ["en", "hi", "ta", "te", "ml"], description: "The language the user is speaking, to answer in: 'en' English, 'hi' Hindi, 'ta' Tamil, 'te' Telugu, 'ml' Malayalam." },
   },
   required: ["college", "question", "language"],
 };
@@ -84,6 +99,11 @@ export default async function handler(req, res) {
         }
         break;
       }
+      case "models": {
+        const r = await el("/v1/models");
+        out.models = r.ok ? r.data.map((m) => ({ id: m.model_id, tts: m.can_do_text_to_speech, langs: (m.languages || []).map((l) => l.language_id).filter((l) => ["en", "hi", "ta", "te", "ml"].includes(l)) })) : short(r.data);
+        break;
+      }
       case "addvoice": {
         const r = await el(`/v1/voices/add/${encodeURIComponent(q.owner)}/${encodeURIComponent(q.voice)}`, { method: "POST", body: { new_name: q.name || "CampusVoice" } });
         out.add = { status: r.status, data: short(r.data, 600) };
@@ -105,7 +125,7 @@ export default async function handler(req, res) {
           name: "CampusVoice AI",
           conversation_config: {
             agent: {
-              first_message: "Hi! I'm CampusVoice. Ask me anything about {{college_name}}: fees, admissions, courses or hostel. You can speak in English or Tamil.",
+              first_message: "Hi! I'm CampusVoice. Ask me anything about {{college_name}}: fees, admissions, courses or hostel, in your language.",
               language: "en",
               dynamic_variables: { dynamic_variable_placeholders: { college_name: "Pondicherry University" } },
               prompt: {
@@ -119,7 +139,12 @@ export default async function handler(req, res) {
             tts: { model_id: q.tts || "eleven_flash_v2", voice_id: voice },
             conversation: { max_duration_seconds: 150 },
             language_presets: {
+              hi: { overrides: { tts: { model_id: q.indicmodel || "eleven_flash_v2_5" }, agent: { first_message: "नमस्ते! मैं CampusVoice हूँ। {{college_name}} की फीस, एडमिशन, कोर्स या हॉस्टल, कुछ भी पूछिए।", language: "hi" } } },
               ta: { overrides: { ...(q.tamodel ? { tts: { model_id: q.tamodel } } : {}), agent: { first_message: "வணக்கம்! நான் CampusVoice. {{college_name}} பற்றி கட்டணம், சேர்க்கை, படிப்புகள், விடுதி என எதை வேண்டுமானாலும் கேளுங்கள்.", language: "ta" } } },
+              ...(q.indicmodel ? {
+                te: { overrides: { tts: { model_id: q.indicmodel }, agent: { first_message: "నమస్కారం! నేను CampusVoice. {{college_name}} ఫీజు, అడ్మిషన్, కోర్సులు, హాస్టల్, ఏదైనా అడగండి.", language: "te" } } },
+                ml: { overrides: { tts: { model_id: q.indicmodel }, agent: { first_message: "നമസ്കാരം! ഞാൻ CampusVoice ആണ്. {{college_name}} ഫീസ്, അഡ്മിഷൻ, കോഴ്സുകൾ, ഹോസ്റ്റൽ, എന്തും ചോദിക്കൂ.", language: "ml" } } },
+              } : {}),
             },
           },
           platform_settings: {
@@ -136,7 +161,7 @@ export default async function handler(req, res) {
       case "vapi": {
         const assistant = {
           name: "CampusVoice Phone",
-          firstMessage: "Hi! This is CampusVoice, your college helpdesk. Which college would you like to know about? You can speak in English or Tamil.",
+          firstMessage: "Hi! This is CampusVoice, your college helpdesk. Which college would you like to know about? You can speak English, Hindi, Tamil, Telugu or Malayalam.",
           model: {
             provider: q.provider || "openai", model: q.model || "gpt-4o-mini", temperature: 0.3, maxTokens: 260,
             messages: [{ role: "system", content: PHONE_PROMPT }],
@@ -145,16 +170,13 @@ export default async function handler(req, res) {
               function: { name: "college_lookup", description: TOOL_DESCRIPTION, parameters: TOOL_PARAMS },
               server: { url: `${base}/api/ask`, timeoutSeconds: 25, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
               messages: [
-                { type: "request-start", content: "One moment, let me check that for you.", conditions: [{ param: "language", operator: "neq", value: "ta" }] },
-                { type: "request-start", content: "ஒரு நிமிடம், பார்த்துச் சொல்கிறேன்.", conditions: [{ param: "language", operator: "eq", value: "ta" }] },
-                { type: "request-response-delayed", content: "Still checking, almost there.", timingMilliseconds: 11000, conditions: [{ param: "language", operator: "neq", value: "ta" }] },
-                { type: "request-response-delayed", content: "இன்னும் கொஞ்சம் நேரம், பார்த்துக்கொண்டிருக்கிறேன்.", timingMilliseconds: 11000, conditions: [{ param: "language", operator: "eq", value: "ta" }] },
+                ...waitMessages(),
                 { type: "request-failed", content: "Sorry, I couldn't reach the college website just now. Please check their official website or ask me something else." },
               ],
             }],
           },
-          voice: q.vvoice ? { provider: "11labs", voiceId: q.vvoice, model: "eleven_flash_v2_5" } : { provider: "vapi", voiceId: q.vapivoice || "Elliot" },
-          // ElevenLabs Scribe understands Tamil and English in the same call; Google is the backup listener.
+          voice: q.vvoice ? { provider: "11labs", voiceId: q.vvoice, model: q.vmodel || VAPI_VOICE_MODEL } : { provider: "vapi", voiceId: q.vapivoice || "Elliot" },
+          // ElevenLabs Scribe understands all five languages (and mixing them with English); Google is the backup listener.
           transcriber: q.stt === "google" ? { provider: "google", model: q.sttmodel || "gemini-2.5-flash", language: "Multilingual" }
             : { provider: "11labs", model: q.sttmodel || "scribe_v2_realtime", ...(q.sttlang ? { language: q.sttlang } : {}),
                 fallbackPlan: { transcribers: [{ provider: "google", model: "gemini-2.5-flash", language: "Multilingual" }] } },

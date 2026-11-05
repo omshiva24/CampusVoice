@@ -3,15 +3,18 @@
 @font-face { font-family: "Atk"; src: url("fonts/AtkinsonHyperlegibleNext.ttf") format("truetype"); font-weight: 200 800; font-display: swap; }
 @font-face { font-family: "SG"; src: url("fonts/SpaceGrotesk.ttf") format("truetype"); font-weight: 300 700; font-display: swap; }
 @font-face { font-family: "Tamil"; src: url("fonts/NotoSansTamil.ttf") format("truetype"); font-weight: 100 900; font-display: swap; unicode-range: U+0B80-0BFF, U+200C-200D, U+25CC; }
+@font-face { font-family: "Indic"; src: url("fonts/NotoSansDevanagari.ttf") format("truetype"); font-weight: 100 900; font-display: swap; unicode-range: U+0900-097F, U+1CD0-1CFF, U+A8E0-A8FF, U+200C-200D, U+25CC; }
+@font-face { font-family: "Indic"; src: url("fonts/NotoSansTelugu.ttf") format("truetype"); font-weight: 100 900; font-display: swap; unicode-range: U+0C00-0C7F, U+200C-200D, U+25CC; }
+@font-face { font-family: "Indic"; src: url("fonts/NotoSansMalayalam.ttf") format("truetype"); font-weight: 100 900; font-display: swap; unicode-range: U+0D00-0D7F, U+200C-200D, U+25CC; }
 
 :root {
   --bg: #050B1F; --bg2: #0A1430; --card: rgba(16, 28, 64, .72); --line: rgba(148, 197, 255, .16); --line2: rgba(148, 197, 255, .3);
   --ink: #EEF4FF; --muted: #A9B8D9; --dim: #6E80A8;
   --teal: #5EEAD4; --indigo: #818CF8; --pink: #F472B6; --yellow: #FFD84D; --green: #34D399; --red: #FB7185;
   --grad: linear-gradient(100deg, #5EEAD4 0%, #818CF8 45%, #F472B6 100%);
-  --font: "Atk", "Tamil", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --display: "Brico", "Tamil", "Atk", system-ui, sans-serif;
-  --mono: "SG", "Tamil", ui-monospace, sans-serif;
+  --font: "Atk", "Tamil", "Indic", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Brico", "Tamil", "Indic", "Atk", system-ui, sans-serif;
+  --mono: "SG", "Tamil", "Indic", ui-monospace, sans-serif;
   --r: 22px;
 }
 * { box-sizing: border-box; }
@@ -64,8 +67,9 @@ h1 { font-size: clamp(46px, 8.4vw, 86px); margin-bottom: 18px; }
 .chip { border: 1px solid var(--line2); background: rgba(255,255,255,.04); border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all .15s; }
 .chip:hover { color: var(--ink); border-color: var(--teal); }
 .chip[aria-pressed="true"] { background: rgba(94,234,212,.14); color: var(--teal); border-color: var(--teal); }
-.seg { display: inline-flex; padding: 5px; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line2); }
-.seg button { border: 0; background: none; padding: 10px 20px; border-radius: 10px; font-weight: 700; color: var(--muted); cursor: pointer; min-width: 110px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 5px; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line2); max-width: 560px; }
+.seg button { flex: 1 1 28%; border: 0; background: none; padding: 10px 12px; border-radius: 10px; font-weight: 700; color: var(--muted); cursor: pointer; min-width: 0; }
+@media (min-width: 720px) { .seg button { flex: 1 1 auto; } }
 .seg button[aria-checked="true"] { background: var(--grad); color: #0A1022; }
 
 /* agent card */

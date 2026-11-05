@@ -326,6 +326,18 @@ export async function researchCollege({ college, question, budget = 20000 }) {
   return { college: info.title, website: info.website, wikiUrl: info.wikiUrl, passages: picked, docs: docs.slice(0, 3), sources: sources.slice(0, 5), ms: Date.now() - t0, debug };
 }
 
+// The five languages CampusVoice speaks, and how to ask the AI to reply in each.
+export const LANGS = ["en", "hi", "ta", "te", "ml"];
+const REPLY_IN = {
+  en: "English",
+  hi: "simple spoken Hindi, in Devanagari script (words like B.Tech, hostel, NIRF can stay in English)",
+  ta: "simple spoken Tamil, in Tamil script (words like B.Tech, hostel, NIRF can stay in English)",
+  te: "simple spoken Telugu, in Telugu script (words like B.Tech, hostel, NIRF can stay in English)",
+  ml: "simple spoken Malayalam, in Malayalam script (words like B.Tech, hostel, NIRF can stay in English)",
+};
+export const langOf = (l) => (LANGS.includes(l) ? l : "en");
+const SAYS = { en: "Here's what {s} says:", hi: "{s} के अनुसार:", ta: "{s} தகவல்:", te: "{s} ప్రకారం:", ml: "{s} പ്രകാരം:" };
+
 // Notes for a voice agent's LLM: it answers only from these.
 export function notesFor(r, { max = Infinity, lang } = {}) {
   const lines = [`College: ${r.college}${r.website ? ` (official website: ${host(r.website)})` : " (official website not found)"}.`];
@@ -339,7 +351,7 @@ export function notesFor(r, { max = Infinity, lang } = {}) {
   if (r.docs.length) lines.push(`Documents on the official website: ${r.docs.map((d) => `"${d.title}" (PDF)`).join("; ")}.`);
   lines.push("Answer ONLY from these notes, briefly, and mention the source. If the exact answer isn't here, say so honestly and suggest the official website or admission office (mention a matching PDF document if one is listed). Information may be from an earlier year: say which year if the notes show it.");
   if (Number.isFinite(max)) lines.push("This is a phone-style voice reply: say only the direct answer in one or two short sentences (about 25 words), then ask \"Anything else?\".");
-  if (lang === "ta") lines.push("The user is speaking Tamil: reply in simple spoken Tamil, in Tamil script.");
+  if (lang && lang !== "en" && REPLY_IN[lang]) lines.push(`The user is speaking ${REPLY_IN[lang].split(",")[0].replace("simple spoken ", "")}: reply in ${REPLY_IN[lang]}.`);
   return lines.join("\n");
 }
 
@@ -347,7 +359,7 @@ export function notesFor(r, { max = Infinity, lang } = {}) {
 async function gemini(model, notes, question, lang, timeoutMs) {
   const generationConfig = { temperature: 0.2 };
   if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: /lite/.test(model) ? "minimal" : "low" };
-  const sys = `You are CampusVoice, a friendly college helpdesk. Answer the question using ONLY the notes. Reply in ${lang === "ta" ? "simple spoken Tamil (words like B.Tech, hostel, NIRF can stay in English)" : "English"}, at most 3 short sentences for speaking aloud, no markdown, no links. Mention where the info comes from (official website or Wikipedia) and the year if shown. If the notes don't contain the answer, say honestly that you couldn't find it on their website right now and suggest the official website or admission office. Never mention "notes", "the provided information" or how you got it; talk like a helpful person.`;
+  const sys = `You are CampusVoice, a friendly college helpdesk. Answer the question using ONLY the notes. Reply in ${REPLY_IN[langOf(lang)]}, at most 3 short sentences for speaking aloud, no markdown, no links. Mention where the info comes from (official website or Wikipedia) and the year if shown. If the notes don't contain the answer, say honestly that you couldn't find it on their website right now and suggest the official website or admission office. Never mention "notes", "the provided information" or how you got it; talk like a helpful person.`;
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(`${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`, {
@@ -361,7 +373,7 @@ async function gemini(model, notes, question, lang, timeoutMs) {
 }
 const answers = new Map();
 export async function answerCollegeQuestion({ college, question, lang = "en" }) {
-  lang = lang === "ta" ? "ta" : "en";
+  lang = langOf(lang);
   const key = `${college}|${question}|${lang}`.toLowerCase();
   const hit = answers.get(key);
   if (hit && Date.now() - hit.at < 3 * 3600_000) return { ...hit.value, cached: true, ms: 0 };
@@ -379,8 +391,7 @@ export async function answerCollegeQuestion({ college, question, lang = "en" }) 
   if (!answer) {
     // AI busy: read out the most relevant line from the official sources instead of failing.
     const top = r.passages[0];
-    answer = top ? `Here's what ${top.src.title.split(" · ")[0]} says: ${top.t.slice(0, 280)}` : `I couldn't find that for ${r.college}. Please check the official website${r.website ? ` (${host(r.website)})` : ""} or call the admission office.`;
-    if (lang === "ta" && top) answer = `${top.src.title.split(" · ")[0]} தகவல்: ${top.t.slice(0, 280)}`;
+    answer = top ? `${SAYS[lang].replace("{s}", top.src.title.split(" · ")[0])} ${top.t.slice(0, 280)}` : `I couldn't find that for ${r.college}. Please check the official website${r.website ? ` (${host(r.website)})` : ""} or call the admission office.`;
   }
   const value = { answer, sources: r.sources, college: r.college, website: r.website, model, lang };
   answers.set(key, { at: Date.now(), value });

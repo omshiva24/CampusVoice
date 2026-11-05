@@ -1,7 +1,7 @@
 // CampusVoice AI — natural voice for the free backup mode (Gemini text-to-speech)
 // © 2026 P Om Shiva. All rights reserved. See LICENSE.
 //
-// Used only when the visitor's device has no voice for the language (often Tamil on computers).
+// Used only when the visitor's device has no voice for the language (often Tamil, Telugu or Malayalam on computers).
 import { ipOf, limited, readJson, clean } from "./_lib.js";
 
 const MODELS = (process.env.GEMINI_TTS_MODELS || "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-2.5-flash-preview-tts")
@@ -23,7 +23,6 @@ export default async function handler(req, res) {
   const body = await readJson(req);
   const text = clean(body.text, 600);
   if (!text) return res.status(400).json({ error: "No text." });
-  const lang = body.lang === "ta" ? "ta" : "en";
   // Send only the words to speak: a style instruction in front gets read out loud by some voices.
   const say = text;
   for (const model of MODELS) {

@@ -1,7 +1,7 @@
 # CampusVoice AI
 
 **Ask any college. Out loud.**
-A voice agent that answers questions about **any college**, like fees, admissions, courses, hostel and placements, in **English or Tamil**, on a **website** or a **phone call**. It reads the college's official website live and shows its sources.
+A voice agent that answers questions about **any college**, like fees, admissions, courses, hostel and placements, in **English, Hindi, Tamil, Telugu or Malayalam**, on a **website** or a **phone call**. It reads the college's official website live and shows its sources.
 
 **Live app:** [campusvoiceai.vercel.app](https://campusvoiceai.vercel.app)
 
@@ -12,7 +12,7 @@ A voice agent that answers questions about **any college**, like fees, admission
 
 ## Why I built this
 
-During admissions, college offices are flooded with calls. Phones ring unanswered, websites are confusing and mostly in English. A first-generation student, or a parent who speaks only Tamil, often can't get a simple answer: *"What's the fee? Is there a hostel? When's the last date?"*
+During admissions, college offices are flooded with calls. Phones ring unanswered, websites are confusing and mostly in English. A first-generation student, or a parent who speaks only Tamil, Hindi, Telugu or Malayalam, often can't get a simple answer: *"What's the fee? Is there a hostel? When's the last date?"*
 
 Wrong or missing information costs real seats and real money. So I built a helpdesk that never sleeps, never gets tired of questions and speaks your language, for any college, on a website or a simple phone call.
 
@@ -22,17 +22,17 @@ Wrong or missing information costs real seats and real money. So I built a helpd
 
 ## What it does
 
-- **Talk, don't type:** tap the mic and ask in English or Tamil; the agent answers out loud and switches language automatically.
+- **Talk, don't type:** tap the mic and ask in English, हिन्दी, தமிழ், తెలుగు or മലയാളം; the agent answers out loud in the same language and switches when you do.
 - **Any college:** type any college name. The agent finds its official website and reads the pages that match your question.
 - **Grounded answers with sources:** the agent answers only from what it read and shows the source pages, so you can check.
 - **Phone line:** the same agent picks up real phone calls (Vapi), and can be tried in the browser too.
-- **Never goes silent:** three voices in a row. If ElevenLabs can't start, the site uses the same agent on Vapi; if Vapi's credit is used up, it switches to a free voice (the browser's own listening, and the device voice or a free Gemini voice for speaking, which also covers Tamil). Typing always works too.
-- **Accessible:** big touch targets, keyboard support, screen-reader labels, reduced-motion support and a Tamil font.
+- **Never goes silent:** three voices in a row. If ElevenLabs can't start, the site uses the same agent on Vapi; if Vapi's credit is used up, it switches to a free voice (the browser's own listening, and the device voice or a free Gemini voice for speaking, which also covers the Indian languages). Typing always works too.
+- **Accessible:** big touch targets, keyboard support, screen-reader labels, reduced-motion support and fonts for Devanagari, Tamil, Telugu and Malayalam.
 
 ## How it works
 
 ```
-You speak (English / Tamil)
+You speak (English / Hindi / Tamil / Telugu / Malayalam)
   ├─ Website ──► ElevenLabs Agent: speech-to-text → language model → text-to-speech
   │                 └─ tool: college_lookup (runs in the page so you see the search and sources)
   ├─ Backup  ──► the same Vapi assistant in the browser, then a free browser voice
