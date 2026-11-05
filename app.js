@@ -374,7 +374,9 @@ async function startVapiWeb() {
   v.on("speech-end", () => setMode("listening"));
   v.on("volume-level", (l) => { state.vapiLevel = l; });
   const shown = new Set(), pending = new Map();
-  let said = "", turnLang = null; // said: the agent's words as written by its brain (the spoken-text copy can break Tamil letters)
+  let said = "", turnLang = null; // said: the agent's words as written by its brain (the spoken-text copy can break Indian letters)
+  let heard = false, greeted = false, lastAi = { text: "", at: 0 };
+  const first = hello(college());
   v.on("message", async (m) => {
     if (m?.type === "model-output" && typeof m.output === "string") {
       // a new reply starts after a pause in the stream (for example after the caller interrupts)
@@ -383,12 +385,17 @@ async function startVapiWeb() {
     }
     if (m?.type === "user-interrupted") said = "";
     if (m?.type === "transcript" && m.transcriptType === "final" && m.transcript) {
-      if (m.role === "user") { said = ""; turnLang = scriptLang(m.transcript); bubble("user", m.transcript); }
-      else {
+      if (m.role === "user") { heard = true; said = ""; turnLang = scriptLang(m.transcript); bubble("user", m.transcript); }
+      else if (!heard) {
+        // the greeting: show the exact words we gave the agent (its spoken-text copy can come back twice or mis-spelt)
+        if (!greeted) { greeted = true; bubble("ai", first); }
+      } else {
         const broken = /\uFFFD/.test(m.transcript) || (scriptLang(m.transcript) && said.trim().length > m.transcript.length);
         let text = broken && said.trim() ? said.trim() : m.transcript;
         // the "please wait" lines are spoken in the caller's language, but their captions can arrive in English
         if (turnLang && /^(one (minute|moment)|still checking|just a moment)/i.test(text)) text = /^still/i.test(text) ? t("still", turnLang) : t("wait", turnLang);
+        if (text === lastAi.text && Date.now() - lastAi.at < 8000) return; // the same line sent twice
+        lastAi = { text, at: Date.now() };
         bubble("ai", text);
         if (broken) said = "";
       }
@@ -421,7 +428,6 @@ async function startVapiWeb() {
       }
     }
   });
-  const first = hello(college());
   // Warm up the lookup server for this college while the agent says hello.
   fetch("api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "warm", college: college() }) }).catch(() => {});
   const overrides = { firstMessage: first, variableValues: { college_name: college() } };

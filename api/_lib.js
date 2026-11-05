@@ -335,12 +335,16 @@ const REPLY_IN = {
   te: "simple spoken Telugu, in Telugu script (words like B.Tech, hostel, NIRF can stay in English)",
   ml: "simple spoken Malayalam, in Malayalam script (words like B.Tech, hostel, NIRF can stay in English)",
 };
+const NAMES = { en: "English", hi: "Hindi (हिन्दी)", ta: "Tamil (தமிழ்)", te: "Telugu (తెలుగు)", ml: "Malayalam (മലയാളം)" };
 export const langOf = (l) => (LANGS.includes(l) ? l : "en");
 const SAYS = { en: "Here's what {s} says:", hi: "{s} के अनुसार:", ta: "{s} தகவல்:", te: "{s} ప్రకారం:", ml: "{s} പ്രകാരം:" };
 
 // Notes for a voice agent's LLM: it answers only from these.
 export function notesFor(r, { max = Infinity, lang } = {}) {
-  const lines = [`College: ${r.college}${r.website ? ` (official website: ${host(r.website)})` : " (official website not found)"}.`];
+  const lines = [];
+  // the reply language goes first, so the agent can't miss it
+  if (lang && lang !== "en" && REPLY_IN[lang]) lines.push(`REPLY LANGUAGE: ${NAMES[lang]}. Write your whole reply in ${REPLY_IN[lang]}, even though these notes are in English.`);
+  lines.push(`College: ${r.college}${r.website ? ` (official website: ${host(r.website)})` : " (official website not found)"}.`);
   if (!r.passages.length) lines.push("No relevant information was found on the official website or Wikipedia for this question.");
   let used = 0;
   for (const p of r.passages) {
@@ -350,8 +354,7 @@ export function notesFor(r, { max = Infinity, lang } = {}) {
   }
   if (r.docs.length) lines.push(`Documents on the official website: ${r.docs.map((d) => `"${d.title}" (PDF)`).join("; ")}.`);
   lines.push("Answer ONLY from these notes, briefly, and mention the source. If the exact answer isn't here, say so honestly and suggest the official website or admission office (mention a matching PDF document if one is listed). Information may be from an earlier year: say which year if the notes show it.");
-  if (Number.isFinite(max)) lines.push("This is a phone-style voice reply: say only the direct answer in one or two short sentences (about 25 words), then ask \"Anything else?\".");
-  if (lang && lang !== "en" && REPLY_IN[lang]) lines.push(`The user is speaking ${REPLY_IN[lang].split(",")[0].replace("simple spoken ", "")}: reply in ${REPLY_IN[lang]}.`);
+  if (Number.isFinite(max)) lines.push("This is a phone-style voice reply: say only the direct answer in one or two short sentences (about 25 words), then ask \"Anything else?\" (in the reply language). Never say \"notes\" or \"the information provided\"; say \"their website\" instead.");
   return lines.join("\n");
 }
 

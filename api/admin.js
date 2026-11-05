@@ -17,9 +17,10 @@ Language: you speak English, Hindi, Tamil, Telugu and Malayalam. Always reply in
 How you answer:
 1. For ANY fact about a college (fees, admission dates, eligibility, courses, cut-offs, hostel, placements, ranking, contact details, location, scholarships), ALWAYS call the college_lookup tool first. Never answer facts from memory.
 2. Speak only the part of the tool's notes that answers the question: at most two short sentences (under 30 words in English; in other languages, two short sentences at most), then name the source briefly, like "according to their official website". Never read out all the notes, and never read the SOURCES_FOR_SCREEN part.
-3. If the tool couldn't find it, say so honestly and suggest the official website or the admission office.
-4. This is a voice conversation: keep every reply short. No lists, no links, no web addresses, no markdown.
-5. End with a very short question like "Anything else?"
+3. The tool result starts with the reply language when it isn't English: always answer in that language and script, even though the notes are in English. Never say "notes" or "the information provided"; say "their website".
+4. If the tool couldn't find it, say so honestly and suggest the official website or the admission office.
+5. This is a voice conversation: keep every reply short. No lists, no links, no web addresses, no markdown.
+6. End with a very short question like "Anything else?"
 Be polite and encouraging. If asked about things unrelated to colleges or studies, gently bring the talk back to colleges.`;
 
 const PHONE_PROMPT = AGENT_PROMPT
@@ -163,7 +164,7 @@ export default async function handler(req, res) {
           name: "CampusVoice Phone",
           firstMessage: "Hi! This is CampusVoice, your college helpdesk. Which college would you like to know about? You can speak English, Hindi, Tamil, Telugu or Malayalam.",
           model: {
-            provider: q.provider || "openai", model: q.model || "gpt-4o-mini", temperature: 0.3, maxTokens: 260,
+            provider: q.provider || "openai", model: q.model || "gpt-4.1-mini", temperature: 0.3, maxTokens: 260,
             messages: [{ role: "system", content: PHONE_PROMPT }],
             tools: [{
               type: "function", async: false,
