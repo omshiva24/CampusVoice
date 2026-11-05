@@ -24,7 +24,8 @@ export default async function handler(req, res) {
   const text = clean(body.text, 600);
   if (!text) return res.status(400).json({ error: "No text." });
   const lang = body.lang === "ta" ? "ta" : "en";
-  const say = lang === "ta" ? `Read this aloud in a warm, clear Tamil voice: ${text}` : `Read this aloud in a warm, clear Indian English voice: ${text}`;
+  // Send only the words to speak: a style instruction in front gets read out loud by some voices.
+  const say = text;
   for (const model of MODELS) {
     try {
       const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 15000);

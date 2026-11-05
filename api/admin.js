@@ -146,7 +146,7 @@ export default async function handler(req, res) {
               server: { url: toolUrl, timeoutSeconds: 25, headers: { "x-tool-secret": process.env.TOOL_SECRET } },
               messages: [
                 { type: "request-start", content: "One moment, let me check that for you." },
-                { type: "request-response-delayed", content: "Still checking the official website, almost there.", timingMilliseconds: 6000 },
+                { type: "request-response-delayed", content: "Still checking, almost there.", timingMilliseconds: 9000 },
                 { type: "request-failed", content: "Sorry, I couldn't reach the college website just now. Please check their official website or ask me something else." },
               ],
             }],
